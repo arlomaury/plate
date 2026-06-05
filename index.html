@@ -1,0 +1,839 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1" />
+<meta name="theme-color" content="#FBF6EC" />
+<link rel="manifest" href="/manifest.webmanifest" />
+<link rel="apple-touch-icon" href="/icon.svg" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-title" content="Plate" />
+<title>Plate</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Figtree:wght@400;500;600;700&display=swap');
+
+:root{
+  --paper:#FBF6EC; --paper-2:#F4ECDD; --card:#FFFFFF;
+  --ink:#2B2117; --ink-soft:#6B5E4E; --muted:#9C8E7B; --line:#EAE0CF;
+  --terracotta:#C9603C; --terracotta-d:#B4502F;
+  --sage:#7C8A4E; --amber:#D69A3C; --clay:#C0492F;
+  --shadow:0 18px 50px -22px rgba(60,40,20,.35);
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+html,body{margin:0;padding:0;}
+body{
+  font-family:'Figtree',system-ui,sans-serif;color:var(--ink);
+  min-height:100vh;min-height:100dvh;
+  background:radial-gradient(120% 80% at 50% -10%, #FDF9F0 0%, var(--paper) 45%, var(--paper-2) 100%);
+}
+.plate-root{min-height:100vh;min-height:100dvh;display:flex;justify-content:center;position:relative;overflow-x:hidden;}
+.grain{position:fixed;inset:0;pointer-events:none;z-index:0;opacity:.5;mix-blend-mode:multiply;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.05'/%3E%3C/svg%3E");}
+.shell{position:relative;z-index:1;width:100%;max-width:468px;min-height:100vh;min-height:100dvh;
+  display:flex;flex-direction:column;background:var(--paper);box-shadow:0 0 80px -30px rgba(70,45,20,.25);}
+.topbar{padding:22px 22px 14px;display:flex;align-items:baseline;justify-content:space-between;
+  border-bottom:1px solid var(--line);position:sticky;top:0;background:linear-gradient(var(--paper),rgba(251,246,236,.92));backdrop-filter:blur(6px);z-index:5;}
+.brand{display:flex;align-items:center;gap:8px;}
+.brand-mark{color:var(--terracotta);font-size:22px;line-height:1;transform:translateY(1px);}
+.brand-name{font-family:'Fraunces',serif;font-weight:600;font-size:26px;letter-spacing:-.02em;}
+.brand-sub{font-size:13px;color:var(--muted);font-weight:500;}
+.content{flex:1;overflow-y:auto;}
+.page{padding:20px 18px 120px;}
+.loading-screen{display:flex;justify-content:center;padding:80px 0;color:var(--terracotta);}
+.spin{animation:spin 1s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg);}}
+.fade-in{animation:fade .4s ease;}
+@keyframes fade{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:none;}}
+
+.setup-banner{width:100%;display:flex;align-items:center;gap:10px;text-align:left;
+  background:linear-gradient(100deg,#FBEFE2,#F7E6CF);border:1px solid #EAD7BC;color:#7A5A33;
+  padding:13px 14px;border-radius:16px;margin-bottom:18px;font-size:13.5px;font-weight:500;cursor:pointer;}
+.setup-banner span{flex:1;}
+
+.ring-wrap{position:relative;width:230px;height:230px;margin:6px auto 18px;}
+.ring{width:100%;height:100%;transform:rotate(-90deg);}
+.ring-track{fill:none;stroke:var(--line);stroke-width:13;}
+.ring-fill{fill:none;stroke-width:13;stroke-linecap:round;transition:stroke-dashoffset .8s cubic-bezier(.3,.9,.3,1),stroke .4s;}
+.ring-center{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;}
+.ring-num{font-family:'Fraunces',serif;font-size:54px;font-weight:600;line-height:.9;letter-spacing:-.02em;}
+.ring-label{font-size:13px;color:var(--ink-soft);font-weight:600;text-transform:uppercase;letter-spacing:.08em;margin-top:4px;}
+.ring-detail{font-size:12.5px;color:var(--muted);margin-top:7px;}
+
+.macro-row{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:26px;}
+.macro-stat{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:12px;}
+.macro-top{display:flex;align-items:center;gap:6px;margin-bottom:5px;}
+.dot{width:9px;height:9px;border-radius:50%;flex-shrink:0;}
+.macro-label{font-size:12px;color:var(--ink-soft);font-weight:600;}
+.macro-vals{display:flex;align-items:baseline;gap:4px;margin-bottom:8px;}
+.macro-vals b{font-family:'Fraunces',serif;font-size:19px;font-weight:600;}
+.macro-vals span{font-size:11.5px;color:var(--muted);}
+.bar{height:6px;background:var(--paper-2);border-radius:99px;overflow:hidden;}
+.bar-fill{height:100%;border-radius:99px;transition:width .6s ease;}
+
+.section-head{display:flex;align-items:baseline;justify-content:space-between;margin:4px 2px 12px;}
+.section-head h2{font-family:'Fraunces',serif;font-size:20px;font-weight:600;margin:0;}
+.muted{color:var(--muted);font-size:13px;}
+
+.empty{width:100%;background:var(--card);border:1.5px dashed var(--line);border-radius:20px;
+  padding:40px 20px;display:flex;flex-direction:column;align-items:center;gap:6px;color:var(--terracotta);cursor:pointer;}
+.empty-title{font-family:'Fraunces',serif;font-size:17px;color:var(--ink);margin:8px 0 0;font-weight:600;}
+.empty-sub{font-size:13px;color:var(--muted);margin:0;text-align:center;}
+
+.meal-list{display:flex;flex-direction:column;gap:10px;}
+.meal-card{display:flex;align-items:center;gap:13px;background:var(--card);border:1px solid var(--line);
+  border-radius:16px;padding:10px;text-align:left;cursor:pointer;transition:transform .15s,box-shadow .2s;width:100%;}
+.meal-card:active{transform:scale(.985);}
+.meal-card:hover{box-shadow:0 8px 22px -16px rgba(70,45,20,.5);}
+.meal-body{flex:1;min-width:0;}
+.meal-name{font-weight:600;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.meal-meta{font-size:12px;color:var(--muted);margin-top:2px;}
+.meal-kcal{text-align:right;flex-shrink:0;}
+.meal-kcal b{font-family:'Fraunces',serif;font-size:18px;display:block;line-height:1;}
+.meal-kcal span{font-size:11px;color:var(--muted);}
+.monogram{border-radius:13px;display:flex;align-items:center;justify-content:center;flex-shrink:0;
+  color:#fff;font-family:'Fraunces',serif;font-weight:600;line-height:1;box-shadow:inset 0 1px 0 rgba(255,255,255,.25);}
+
+.log-day{margin-bottom:22px;}
+.log-day-head{display:flex;align-items:center;justify-content:space-between;margin:0 2px 10px;}
+.log-date{font-family:'Fraunces',serif;font-size:16px;font-weight:600;color:var(--ink);}
+.log-total{font-size:13px;color:var(--terracotta);font-weight:600;background:#FBEFE7;padding:3px 10px;border-radius:99px;}
+.footnote{text-align:center;font-size:11.5px;color:var(--muted);margin-top:18px;line-height:1.5;padding:0 10px;}
+
+.tabbar{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:468px;
+  display:flex;align-items:center;justify-content:space-around;
+  background:rgba(255,253,248,.92);backdrop-filter:blur(10px);border-top:1px solid var(--line);
+  padding:8px 14px calc(8px + env(safe-area-inset-bottom));z-index:20;}
+.tab{display:flex;flex-direction:column;align-items:center;gap:3px;color:var(--muted);font-size:11px;font-weight:600;
+  background:none;border:none;cursor:pointer;padding:6px 14px;flex:1;}
+.tab-on{color:var(--terracotta);}
+.fab{width:54px;height:54px;border-radius:50%;background:var(--terracotta);color:#fff;border:none;
+  display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;margin:0 4px;
+  box-shadow:0 10px 22px -8px rgba(201,96,60,.7);transition:transform .15s;}
+.fab:active{transform:scale(.92);}
+
+.overlay{position:fixed;inset:0;background:rgba(43,33,23,.42);backdrop-filter:blur(3px);
+  z-index:50;display:flex;align-items:flex-end;justify-content:center;animation:fade .25s ease;}
+.overlay.center{align-items:center;}
+.sheet{width:100%;max-width:468px;background:var(--paper);border-radius:26px 26px 0 0;
+  max-height:92vh;overflow-y:auto;padding:10px 18px calc(26px + env(safe-area-inset-bottom));animation:slideup .32s cubic-bezier(.2,.9,.3,1);}
+@keyframes slideup{from{transform:translateY(40px);opacity:.6;}to{transform:none;opacity:1;}}
+.sheet-handle{width:42px;height:4px;background:var(--line);border-radius:99px;margin:4px auto 12px;}
+.sheet-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;}
+.sheet-head h3{font-family:'Fraunces',serif;font-size:21px;font-weight:600;margin:0;}
+.x-btn-sm{background:var(--paper-2);border:none;width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:var(--ink-soft);cursor:pointer;}
+
+.pick-stage{display:flex;flex-direction:column;align-items:center;gap:14px;padding:6px 0 4px;}
+.dropzone{width:100%;background:var(--card);border:1.5px dashed #DEB58F;border-radius:20px;
+  padding:34px 20px;display:flex;flex-direction:column;align-items:center;gap:7px;cursor:pointer;color:var(--terracotta);transition:background .2s;}
+.dropzone:hover{background:#FFFBF5;}
+.dz-ico{width:62px;height:62px;border-radius:50%;background:#FBEDE3;display:flex;align-items:center;justify-content:center;}
+.dz-title{font-family:'Fraunces',serif;font-size:17px;font-weight:600;color:var(--ink);}
+.dz-sub{font-size:13px;color:var(--muted);text-align:center;}
+.link-btn{background:none;border:none;color:var(--ink-soft);font-weight:600;font-size:13.5px;cursor:pointer;text-decoration:underline;text-underline-offset:3px;}
+
+.analyzing{display:flex;flex-direction:column;align-items:center;gap:14px;padding:12px 0 8px;}
+.analyze-img{width:160px;height:160px;object-fit:cover;border-radius:18px;}
+.analyze-status{display:flex;align-items:center;gap:8px;color:var(--ink-soft);font-weight:500;font-size:14px;}
+
+.review{display:flex;flex-direction:column;gap:12px;}
+.review-img{width:100%;height:170px;object-fit:cover;border-radius:16px;}
+.conf-pill{font-size:12px;color:#7A5A33;background:#FBEFDD;border:1px solid #ECD9BD;padding:8px 12px;border-radius:12px;line-height:1.4;}
+.inline-warn{display:flex;align-items:flex-start;gap:7px;font-size:13px;color:#9A3B25;background:#FBE6DF;border:1px solid #F0CBBE;padding:9px 12px;border-radius:12px;line-height:1.4;}
+
+.fld{display:flex;flex-direction:column;gap:5px;flex:1;}
+.fld>span{font-size:12.5px;font-weight:600;color:var(--ink-soft);}
+.fld input,.fld textarea{font-family:inherit;font-size:15px;color:var(--ink);background:var(--card);
+  border:1px solid var(--line);border-radius:12px;padding:11px 13px;outline:none;width:100%;transition:border-color .15s,box-shadow .15s;}
+.fld input:focus,.fld textarea:focus{border-color:var(--terracotta);box-shadow:0 0 0 3px rgba(201,96,60,.12);}
+.fld textarea{resize:none;}
+.fld-row{display:flex;gap:10px;}
+
+.items-head{display:flex;align-items:center;justify-content:space-between;margin-top:2px;}
+.items-head span{font-size:12.5px;font-weight:600;color:var(--ink-soft);}
+.add-item{background:none;border:none;color:var(--terracotta);font-weight:600;font-size:13px;cursor:pointer;display:flex;align-items:center;gap:3px;}
+.item-row{display:flex;gap:8px;align-items:center;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:8px 10px;}
+.item-row input.iname{flex:1;border:none;outline:none;background:none;font-family:inherit;font-size:14px;color:var(--ink);min-width:0;}
+.item-row input.ical{width:64px;border:none;outline:none;background:var(--paper-2);border-radius:8px;padding:6px 8px;font-family:inherit;font-size:14px;text-align:right;color:var(--ink);}
+.item-row .unit{font-size:11px;color:var(--muted);}
+.item-del{background:none;border:none;color:var(--muted);cursor:pointer;display:flex;padding:2px;}
+.item-total{display:flex;justify-content:space-between;font-size:13px;color:var(--ink-soft);padding:2px 4px;font-weight:600;}
+.item-total b{font-family:'Fraunces',serif;color:var(--ink);}
+
+.save-btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;
+  background:var(--terracotta);color:#fff;border:none;border-radius:14px;padding:15px;
+  font-family:inherit;font-size:15.5px;font-weight:700;cursor:pointer;margin-top:4px;
+  box-shadow:0 12px 24px -12px rgba(201,96,60,.7);transition:transform .15s,background .2s;}
+.save-btn:hover{background:var(--terracotta-d);}
+.save-btn:active{transform:scale(.985);}
+.save-btn:disabled{opacity:.45;cursor:not-allowed;box-shadow:none;}
+.save-btn.saved{background:var(--sage);box-shadow:none;}
+.save-note{font-size:11.5px;color:var(--muted);text-align:center;line-height:1.5;margin:10px 2px 0;}
+
+.detail-card{width:100%;max-width:420px;margin:0 16px;background:var(--paper);border-radius:24px;overflow:hidden;position:relative;box-shadow:var(--shadow);animation:slideup .3s ease;max-height:90vh;overflow-y:auto;}
+.x-btn{position:absolute;top:12px;right:12px;z-index:2;background:rgba(43,33,23,.5);color:#fff;border:none;
+  width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;backdrop-filter:blur(4px);}
+.detail-band{width:100%;height:150px;display:flex;align-items:center;justify-content:center;}
+.detail-band .monogram{box-shadow:0 8px 22px -10px rgba(0,0,0,.45),inset 0 1px 0 rgba(255,255,255,.3);}
+.detail-pad{padding:18px 20px 22px;}
+.detail-name{font-family:'Fraunces',serif;font-size:23px;font-weight:600;line-height:1.15;}
+.detail-time{font-size:13px;color:var(--muted);margin-top:3px;}
+.detail-kcal{display:flex;align-items:center;gap:7px;font-family:'Fraunces',serif;font-size:30px;font-weight:600;color:var(--terracotta);margin:14px 0 2px;}
+.detail-kcal .u{font-family:'Figtree';font-size:14px;color:var(--ink-soft);font-weight:500;}
+.detail-macros{display:flex;gap:16px;margin:8px 0 14px;font-size:13.5px;color:var(--ink-soft);}
+.detail-macros b{font-family:'Fraunces',serif;color:var(--ink);font-size:15px;}
+.break-title{font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin:4px 0 8px;}
+.break-row{display:flex;justify-content:space-between;align-items:baseline;padding:9px 0;border-bottom:1px solid var(--line);font-size:14px;}
+.break-row:last-child{border-bottom:none;}
+.break-row .bn{color:var(--ink);}
+.break-row .bc{font-family:'Fraunces',serif;font-weight:600;color:var(--ink);}
+.break-row .bm{font-size:11.5px;color:var(--muted);margin-left:8px;}
+.detail-desc{font-size:14px;line-height:1.55;color:var(--ink-soft);background:var(--card);border:1px solid var(--line);border-radius:14px;padding:13px 15px;margin:14px 0 16px;}
+.danger-ghost{display:flex;align-items:center;gap:7px;background:none;border:none;color:var(--clay);font-weight:600;font-size:14px;cursor:pointer;padding:4px 0;}
+.confirm-row{display:flex;align-items:center;gap:10px;font-size:14px;color:var(--ink-soft);flex-wrap:wrap;}
+.danger-solid{background:var(--clay);color:#fff;border:none;padding:9px 16px;border-radius:10px;font-weight:600;cursor:pointer;}
+.ghost-sm{background:var(--paper-2);border:none;padding:9px 16px;border-radius:10px;font-weight:600;color:var(--ink-soft);cursor:pointer;}
+
+.target-preview{background-color:#33281C;color:#FBF3E6;border-radius:22px;padding:22px;margin-bottom:18px;position:relative;overflow:hidden;box-shadow:var(--shadow);}
+.target-preview:before{content:"";position:absolute;top:-40px;right:-30px;width:160px;height:160px;border-radius:50%;background:radial-gradient(circle,rgba(201,96,60,.5),transparent 70%);}
+.tp-num{font-family:'Fraunces',serif;font-size:52px;font-weight:600;line-height:.9;letter-spacing:-.02em;position:relative;}
+.tp-label{font-size:13px;opacity:.7;text-transform:uppercase;letter-spacing:.1em;margin-top:6px;font-weight:600;}
+.tp-grid{display:flex;gap:22px;margin-top:18px;position:relative;}
+.tp-grid div{display:flex;flex-direction:column;}
+.tp-grid b{font-family:'Fraunces',serif;font-size:20px;font-weight:600;}
+.tp-grid span{font-size:12px;opacity:.65;}
+.tp-foot{margin-top:16px;font-size:12px;opacity:.6;position:relative;border-top:1px solid rgba(255,255,255,.13);padding-top:12px;}
+
+.card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:16px;margin-bottom:14px;}
+.card-title{font-family:'Fraunces',serif;font-size:16px;font-weight:600;margin-bottom:13px;}
+.card-body{display:flex;flex-direction:column;gap:12px;}
+.seg{display:flex;background:var(--paper-2);border-radius:12px;padding:3px;gap:3px;}
+.seg-btn{flex:1;border:none;background:none;padding:9px;border-radius:9px;font-family:inherit;font-weight:600;font-size:13.5px;color:var(--ink-soft);cursor:pointer;transition:all .18s;}
+.seg-on{background:var(--card);color:var(--terracotta);box-shadow:0 2px 6px -3px rgba(70,45,20,.4);}
+.opt-list{display:flex;flex-direction:column;gap:8px;}
+.opt{display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--paper);border:1px solid var(--line);border-radius:13px;padding:12px 14px;cursor:pointer;text-align:left;color:var(--ink);transition:all .15s;}
+.opt-on{border-color:var(--terracotta);background:#FFFBF6;color:var(--terracotta);}
+.opt-l{font-weight:600;font-size:14px;}
+.opt-h{font-size:12px;color:var(--muted);margin-top:1px;}
+.opt-on .opt-h{color:#C28A6A;}
+.rate-block{background:var(--paper);border:1px solid var(--line);border-radius:13px;padding:13px 14px;}
+.rate-label{font-weight:600;font-size:14px;margin-bottom:10px;}
+.rate-opts{display:flex;gap:8px;}
+.rate-chip{flex:1;border:1px solid var(--line);background:var(--card);padding:9px;border-radius:10px;font-family:inherit;font-weight:600;color:var(--ink-soft);cursor:pointer;transition:all .15s;}
+.rate-chip.on{background:var(--terracotta);color:#fff;border-color:var(--terracotta);}
+.sync-hint{font-size:13px;color:var(--ink-soft);line-height:1.55;margin:0 0 4px;}
+.backup-row{display:flex;gap:10px;}
+.backup-btn{flex:1;display:flex;align-items:center;justify-content:center;gap:7px;background:var(--paper);border:1px solid var(--line);border-radius:12px;padding:12px;font-family:inherit;font-weight:600;font-size:13.5px;color:var(--ink);cursor:pointer;transition:all .15s;}
+.backup-btn:hover{border-color:var(--terracotta);color:var(--terracotta);background:#FFFBF6;}
+.signout{width:100%;background:none;border:1px solid var(--line);border-radius:12px;padding:12px;font-family:inherit;font-weight:600;color:var(--ink-soft);cursor:pointer;margin-top:2px;}
+
+/* auth */
+.auth-wrap{min-height:100vh;min-height:100dvh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;position:relative;z-index:1;}
+.auth-card{width:100%;max-width:380px;background:var(--card);border:1px solid var(--line);border-radius:24px;padding:30px 26px;box-shadow:var(--shadow);}
+.auth-brand{display:flex;align-items:center;gap:9px;justify-content:center;margin-bottom:6px;}
+.auth-brand .brand-name{font-size:30px;}
+.auth-tag{text-align:center;color:var(--muted);font-size:13.5px;margin:0 0 22px;}
+.auth-card .fld{margin-bottom:13px;}
+.auth-err{font-size:13px;color:#9A3B25;background:#FBE6DF;border:1px solid #F0CBBE;padding:9px 12px;border-radius:11px;margin-bottom:12px;}
+.auth-toggle{text-align:center;margin-top:16px;font-size:13.5px;color:var(--ink-soft);}
+.auth-toggle button{background:none;border:none;color:var(--terracotta);font-weight:700;cursor:pointer;font-family:inherit;font-size:13.5px;}
+.config-warn{max-width:380px;background:#FBE6DF;border:1px solid #F0CBBE;color:#7a3320;border-radius:16px;padding:16px 18px;font-size:13.5px;line-height:1.5;}
+.config-warn code{background:#fff;padding:1px 5px;border-radius:5px;font-size:12px;}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="module">
+import React, { useState, useEffect, useRef, useMemo } from "https://esm.sh/react@18.3.1";
+import { createRoot } from "https://esm.sh/react-dom@18.3.1/client";
+import htm from "https://esm.sh/htm@3.1.1";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
+const html = htm.bind(React.createElement);
+
+/* =========================== CONFIG ===========================
+   Fill these in from your Supabase project (Settings > API).
+   The anon key is safe to expose — your data is protected by
+   Row Level Security. The ANTHROPIC key lives only on the server. */
+const CONFIG = {
+  SUPABASE_URL: "https://YOUR-PROJECT.supabase.co",
+  SUPABASE_ANON_KEY: "YOUR-SUPABASE-ANON-KEY",
+  ESTIMATE_URL: "/api/estimate",
+};
+const configured = !CONFIG.SUPABASE_URL.includes("YOUR-PROJECT") && !CONFIG.SUPABASE_ANON_KEY.includes("YOUR-");
+const supabase = configured ? createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY) : null;
+
+/* ----------------------------- icons --------------------------- */
+const I = {};
+function mkIcon(paths, opts){ opts = opts || {};
+  return (p) => { p = p || {}; const s = p.size || 20;
+    return html`<svg width=${s} height=${s} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width=${p.sw || 2} stroke-linecap="round" stroke-linejoin="round" class=${p.className || ""}>${paths}</svg>`; };
+}
+I.Plus = mkIcon(html`<path d="M12 5v14M5 12h14"/>`);
+I.X = mkIcon(html`<path d="M18 6 6 18M6 6l12 12"/>`);
+I.Check = mkIcon(html`<path d="M20 6 9 17l-5-5"/>`);
+I.Trash = mkIcon(html`<path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/>`);
+I.Flame = mkIcon(html`<path d="M12 2c2 4 5 5 5 9a5 5 0 0 1-10 0c0-2 1-3 1-3 .5 2 2 2 2 0 0-2-1-4 2-6Z"/>`);
+I.Loader = mkIcon(html`<path d="M12 2v4M12 18v4M4.9 4.9l2.9 2.9M16.2 16.2l2.9 2.9M2 12h4M18 12h4M4.9 19.1l2.9-2.9M16.2 7.8l2.9-2.9"/>`);
+I.Camera = mkIcon(html`<path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/>`);
+I.Sun = mkIcon(html`<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>`);
+I.List = mkIcon(html`<path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>`);
+I.User = mkIcon(html`<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>`);
+I.Down = mkIcon(html`<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>`);
+I.Up = mkIcon(html`<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/>`);
+I.Pencil = mkIcon(html`<path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/>`);
+I.Spark = mkIcon(html`<path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5 18 18M18 6l-2.5 2.5M8.5 15.5 6 18"/>`);
+I.Alert = mkIcon(html`<circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/>`);
+
+/* --------------------------- math ------------------------------ */
+const ACTIVITY = [
+  { key:"sedentary", label:"Sedentary", hint:"Little or no exercise", mult:1.2 },
+  { key:"light", label:"Lightly active", hint:"1–3 days/week", mult:1.375 },
+  { key:"moderate", label:"Moderately active", hint:"3–5 days/week", mult:1.55 },
+  { key:"active", label:"Very active", hint:"6–7 days/week", mult:1.725 },
+  { key:"athlete", label:"Extra active", hint:"Hard training / physical job", mult:1.9 },
+];
+const GOALS = [{key:"lose",label:"Lose weight"},{key:"maintain",label:"Maintain"},{key:"gain",label:"Build / gain"}];
+const LB_PER_KG = 2.2046226218;
+const kgToLb = (kg)=>kg*LB_PER_KG, lbToKg = (lb)=>lb/LB_PER_KG;
+
+function computeTargets(p){
+  if(!p || !p.weightKg || !p.heightCm || !p.age)
+    return { bmr:0, tdee:0, calories:2000, protein:120, carbs:220, fat:60, valid:false };
+  const bmr = 10*p.weightKg + 6.25*p.heightCm - 5*p.age + (p.sex==="male"?5:-161);
+  const mult = (ACTIVITY.find(a=>a.key===p.activity)||ACTIVITY[1]).mult;
+  const tdee = bmr*mult;
+  let cals = tdee;
+  if(p.goal==="lose") cals = tdee - (p.rate||1)*500;
+  if(p.goal==="gain") cals = tdee + (p.rate||0.5)*500;
+  cals = Math.max(cals, p.sex==="male"?1500:1200);
+  const gPerKg = p.goal==="lose"?2.0:p.goal==="gain"?1.8:1.6;
+  const protein = Math.round(p.weightKg*gPerKg);
+  const fat = Math.round((cals*0.27)/9);
+  const carbs = Math.max(0, Math.round((cals - protein*4 - fat*9)/4));
+  return { bmr:Math.round(bmr), tdee:Math.round(tdee), calories:Math.round(cals/10)*10, protein, carbs, fat, valid:true };
+}
+
+/* --------------------------- dates ----------------------------- */
+const dayKey = (d)=>{ const x=d?new Date(d):new Date();
+  return x.getFullYear()+"-"+String(x.getMonth()+1).padStart(2,"0")+"-"+String(x.getDate()).padStart(2,"0"); };
+const prettyDate = (key)=>{ const [y,m,d]=key.split("-").map(Number); const date=new Date(y,m-1,d);
+  const t=dayKey(), ye=dayKey(new Date(Date.now()-86400000));
+  if(key===t) return "Today"; if(key===ye) return "Yesterday";
+  return date.toLocaleDateString(undefined,{weekday:"long",month:"long",day:"numeric"}); };
+const prettyTime = (ts)=>new Date(ts).toLocaleTimeString(undefined,{hour:"numeric",minute:"2-digit"});
+
+/* --------------------------- colors ---------------------------- */
+const TILE_COLORS = ["#C9603C","#7C8A4E","#D69A3C","#B4502F","#8A6D3B","#6E7F8A"];
+function tileColor(name){ let s=0; for(const c of (name||"M")) s+=c.charCodeAt(0); return TILE_COLORS[s%TILE_COLORS.length]; }
+function Monogram({name,size=54}){
+  const letter=((name||"M").trim()[0]||"M").toUpperCase(); const col=tileColor(name);
+  return html`<div class="monogram" style=${{width:size,height:size,background:"linear-gradient(140deg,"+col+","+col+"cc)",fontSize:size*0.42}}>${letter}</div>`;
+}
+
+/* --------------------------- image ----------------------------- */
+function fileToResized(file, maxDim=760, quality=0.72){
+  return new Promise((resolve,reject)=>{
+    const reader=new FileReader();
+    reader.onload=(e)=>{ const img=new Image();
+      img.onload=()=>{ const scale=Math.min(1,maxDim/Math.max(img.width,img.height));
+        const w=Math.round(img.width*scale), h=Math.round(img.height*scale);
+        const c=document.createElement("canvas"); c.width=w; c.height=h;
+        c.getContext("2d").drawImage(img,0,0,w,h);
+        const url=c.toDataURL("image/jpeg",quality);
+        resolve({dataUrl:url, base64:url.split(",")[1], mediaType:"image/jpeg"}); };
+      img.onerror=reject; img.src=e.target.result; };
+    reader.onerror=reject; reader.readAsDataURL(file);
+  });
+}
+
+/* ------------------------- estimate call ----------------------- */
+async function estimate(base64, mediaType){
+  const { data } = await supabase.auth.getSession();
+  const token = data && data.session ? data.session.access_token : "";
+  const r = await fetch(CONFIG.ESTIMATE_URL, {
+    method:"POST",
+    headers:{ "Content-Type":"application/json", "Authorization":"Bearer "+token },
+    body: JSON.stringify({ image: base64, mediaType }),
+  });
+  if(!r.ok){ const t=await r.text().catch(()=> ""); throw new Error("Estimate failed ("+r.status+") "+t.slice(0,120)); }
+  return await r.json();
+}
+function sumItems(items){
+  return items.reduce((a,it)=>({
+    calories:a.calories+(+it.calories||0), protein:a.protein+(+it.protein||0),
+    carbs:a.carbs+(+it.carbs||0), fat:a.fat+(+it.fat||0),
+  }),{calories:0,protein:0,carbs:0,fat:0});
+}
+
+/* =================================================================
+                              ROOT
+================================================================= */
+function Root(){
+  const [session,setSession]=useState(undefined); // undefined=loading
+  useEffect(()=>{
+    if(!supabase){ setSession(null); return; }
+    supabase.auth.getSession().then(({data})=>setSession(data.session||null));
+    const { data:sub } = supabase.auth.onAuthStateChange((_e,s)=>setSession(s));
+    return ()=> sub.subscription.unsubscribe();
+  },[]);
+
+  if(!configured) return html`<${ConfigScreen}/>`;
+  if(session===undefined) return html`<div class="plate-root"><div class="grain"/><div class="shell"><div class="loading-screen"><${I.Loader} size=${26} className="spin"/></div></div></div>`;
+  if(!session) return html`<${AuthScreen}/>`;
+  return html`<${App} session=${session}/>`;
+}
+
+function ConfigScreen(){
+  return html`<div class="plate-root"><div class="grain"/><div class="auth-wrap">
+    <div class="auth-brand"><span class="brand-mark">◗</span><span class="brand-name">Plate</span></div>
+    <div class="config-warn">
+      <b>Almost there — one step left.</b><br/><br/>
+      Open <code>index.html</code> and fill in <code>SUPABASE_URL</code> and <code>SUPABASE_ANON_KEY</code>
+      in the CONFIG block near the top of the script, then reload. The README walks you through it.
+    </div>
+  </div></div>`;
+}
+
+/* ----------------------------- auth ---------------------------- */
+function AuthScreen(){
+  const [mode,setMode]=useState("signin");
+  const [email,setEmail]=useState(""); const [pw,setPw]=useState("");
+  const [err,setErr]=useState(""); const [busy,setBusy]=useState(false); const [msg,setMsg]=useState("");
+  const submit=async()=>{
+    setErr(""); setMsg(""); setBusy(true);
+    try{
+      if(mode==="signup"){
+        const { error } = await supabase.auth.signUp({ email, password: pw });
+        if(error) throw error;
+        setMsg("Account created. If email confirmation is on, check your inbox, then sign in.");
+        setMode("signin");
+      } else {
+        const { error } = await supabase.auth.signInWithPassword({ email, password: pw });
+        if(error) throw error;
+      }
+    }catch(e){ setErr(e.message||"Something went wrong."); }
+    setBusy(false);
+  };
+  return html`<div class="plate-root"><div class="grain"/><div class="auth-wrap">
+    <div class="auth-card">
+      <div class="auth-brand"><span class="brand-mark">◗</span><span class="brand-name">Plate</span></div>
+      <p class="auth-tag">Your food log, on every device</p>
+      ${err && html`<div class="auth-err">${err}</div>`}
+      ${msg && html`<div class="conf-pill" style=${{marginBottom:12}}>${msg}</div>`}
+      <label class="fld"><span>Email</span>
+        <input type="email" autocomplete="email" value=${email} onChange=${e=>setEmail(e.target.value)} placeholder="you@example.com"/></label>
+      <label class="fld"><span>Password</span>
+        <input type="password" autocomplete=${mode==="signup"?"new-password":"current-password"} value=${pw}
+          onChange=${e=>setPw(e.target.value)} onKeyDown=${e=>{if(e.key==="Enter")submit();}} placeholder="••••••••"/></label>
+      <button class="save-btn" disabled=${busy || !email || !pw} onClick=${submit}>
+        ${busy ? html`<${I.Loader} size=${18} className="spin"/>` : html`<${I.Check} size=${18}/>`}
+        ${mode==="signup"?"Create account":"Sign in"}
+      </button>
+      <div class="auth-toggle">
+        ${mode==="signup"?"Already have an account? ":"New here? "}
+        <button onClick=${()=>{setMode(mode==="signup"?"signin":"signup"); setErr("");}}>
+          ${mode==="signup"?"Sign in":"Create one"}
+        </button>
+      </div>
+    </div>
+  </div></div>`;
+}
+
+/* ----------------------------- app ----------------------------- */
+function App({session}){
+  const userId = session.user.id;
+  const [tab,setTab]=useState("today");
+  const [profile,setProfile]=useState(null);
+  const [meals,setMeals]=useState([]);
+  const [loaded,setLoaded]=useState(false);
+  const [adding,setAdding]=useState(false);
+  const [detailId,setDetailId]=useState(null);
+
+  const loadMeals = async ()=>{
+    const { data } = await supabase.from("meals").select("*").order("ts",{ascending:false});
+    setMeals((data||[]).map(rowToMeal));
+  };
+  useEffect(()=>{
+    let on=true;
+    (async()=>{
+      const { data:prof } = await supabase.from("profiles").select("data").eq("user_id",userId).maybeSingle();
+      if(on && prof && prof.data && Object.keys(prof.data).length) setProfile(prof.data);
+      await loadMeals();
+      if(on) setLoaded(true);
+    })();
+    const ch = supabase.channel("meals-sync")
+      .on("postgres_changes",{event:"*",schema:"public",table:"meals",filter:"user_id=eq."+userId}, loadMeals)
+      .subscribe();
+    return ()=>{ on=false; supabase.removeChannel(ch); };
+  },[userId]);
+
+  const targets = useMemo(()=>computeTargets(profile),[profile]);
+
+  const saveProfile = async (p)=>{
+    setProfile(p);
+    await supabase.from("profiles").upsert({ user_id:userId, data:p, updated_at:new Date().toISOString() });
+  };
+  const addEntry = async (entry)=>{
+    const row = { user_id:userId, ts:new Date().toISOString(), name:entry.name, description:entry.description||"",
+      items:entry.items||[], kcal:entry.calories, protein:entry.protein, carbs:entry.carbs, fat:entry.fat };
+    const { data } = await supabase.from("meals").insert(row).select().single();
+    if(data) setMeals(m=>[rowToMeal(data),...m]);
+  };
+  const deleteEntry = async (id)=>{
+    setMeals(m=>m.filter(x=>x.id!==id)); setDetailId(null);
+    await supabase.from("meals").delete().eq("id",id);
+  };
+  const exportData = ()=>{
+    const payload={app:"Plate",version:2,exportedAt:new Date().toISOString(),profile,entries:meals};
+    const blob=new Blob([JSON.stringify(payload,null,2)],{type:"application/json"});
+    const url=URL.createObjectURL(blob); const a=document.createElement("a");
+    a.href=url; a.download="plate-backup-"+dayKey()+".json"; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url),1000);
+  };
+  const importData = async (file)=>{
+    const data=JSON.parse(await file.text());
+    const incoming=Array.isArray(data.entries)?data.entries:[];
+    for(const e of incoming){
+      await supabase.from("meals").insert({ user_id:userId, ts:e.ts?new Date(e.ts).toISOString():new Date().toISOString(),
+        name:e.name||"Meal", description:e.description||"", items:e.items||[],
+        kcal:e.kcal||0, protein:e.protein||0, carbs:e.carbs||0, fat:e.fat||0 });
+    }
+    if(data.profile) await saveProfile(data.profile);
+    await loadMeals();
+    return { count: incoming.length };
+  };
+
+  const todayKey = dayKey();
+  const todays = meals.filter(m=>m.dateKey===todayKey);
+
+  return html`<div class="plate-root"><div class="grain"/>
+    <div class="shell">
+      <header class="topbar">
+        <div class="brand"><span class="brand-mark">◗</span><span class="brand-name">Plate</span></div>
+        <div class="brand-sub">${tab==="today"?prettyDate(todayKey):tab==="log"?"Full history":"You & your goals"}</div>
+      </header>
+      <main class="content">
+        ${!loaded ? html`<div class="loading-screen"><${I.Loader} size=${26} className="spin"/></div>`
+          : tab==="today" ? html`<${TodayPage} targets=${targets} entries=${todays} hasProfile=${!!profile}
+              onAdd=${()=>setAdding(true)} onOpen=${id=>setDetailId(id)} goProfile=${()=>setTab("profile")}/>`
+          : tab==="log" ? html`<${LogPage} meals=${meals} onOpen=${id=>setDetailId(id)} onAdd=${()=>setAdding(true)}/>`
+          : html`<${ProfilePage} profile=${profile} onSave=${saveProfile} onExport=${exportData} onImport=${importData}
+              email=${session.user.email}/>`}
+      </main>
+      <nav class="tabbar">
+        <${Tab} on=${tab==="today"} onClick=${()=>setTab("today")} icon=${I.Sun} label="Today"/>
+        <button class="fab" onClick=${()=>setAdding(true)} aria-label="Add meal"><${I.Plus} size=${26} sw=${2.4}/></button>
+        <${Tab} on=${tab==="log"} onClick=${()=>setTab("log")} icon=${I.List} label="Log"/>
+        <${Tab} on=${tab==="profile"} onClick=${()=>setTab("profile")} icon=${I.User} label="You"/>
+      </nav>
+    </div>
+    ${adding && html`<${AddSheet} onClose=${()=>setAdding(false)} onSave=${async(e)=>{await addEntry(e); setAdding(false);}}/>`}
+    ${detailId && html`<${Detail} row=${meals.find(m=>m.id===detailId)} onClose=${()=>setDetailId(null)} onDelete=${deleteEntry}/>`}
+  </div>`;
+}
+function rowToMeal(r){
+  return { id:r.id, ts:new Date(r.ts).getTime(), dateKey:dayKey(r.ts), name:r.name, description:r.description||"",
+    items:Array.isArray(r.items)?r.items:[], kcal:r.kcal, protein:r.protein, carbs:r.carbs, fat:r.fat };
+}
+function Tab({on,onClick,icon,label}){
+  return html`<button class=${"tab"+(on?" tab-on":"")} onClick=${onClick}><${icon} size=${20}/><span>${label}</span></button>`;
+}
+
+/* --------------------------- today ----------------------------- */
+function TodayPage({targets,entries,hasProfile,onAdd,onOpen,goProfile}){
+  const t=entries.reduce((a,e)=>({kcal:a.kcal+e.kcal,protein:a.protein+e.protein,carbs:a.carbs+e.carbs,fat:a.fat+e.fat}),{kcal:0,protein:0,carbs:0,fat:0});
+  const remaining=targets.calories-t.kcal;
+  return html`<div class="page fade-in">
+    ${!hasProfile && html`<button class="setup-banner" onClick=${goProfile}>
+      <${I.Spark} size=${18}/><span>Set your height, weight & goal to personalize your targets</span></button>`}
+    <${Ring} consumed=${t.kcal} target=${targets.calories} remaining=${remaining}/>
+    <div class="macro-row">
+      <${Macro} color="var(--sage)" label="Protein" value=${t.protein} target=${targets.protein}/>
+      <${Macro} color="var(--amber)" label="Carbs" value=${t.carbs} target=${targets.carbs}/>
+      <${Macro} color="var(--clay)" label="Fat" value=${t.fat} target=${targets.fat}/>
+    </div>
+    <div class="section-head"><h2>Meals</h2><span class="muted">${entries.length} logged</span></div>
+    ${entries.length===0
+      ? html`<button class="empty" onClick=${onAdd}><${I.Camera} size=${28}/>
+          <p class="empty-title">Nothing logged yet</p><p class="empty-sub">Snap a photo of your meal to get started</p></button>`
+      : html`<div class="meal-list">${entries.map(e=>html`<${MealCard} key=${e.id} row=${e} onClick=${()=>onOpen(e.id)}/>`)}</div>`}
+  </div>`;
+}
+function Ring({consumed,target,remaining}){
+  const r=84,c=2*Math.PI*r; const pct=target>0?Math.min(consumed/target,1):0;
+  const over=remaining<0; const col=over?"var(--clay)":pct>0.9?"var(--sage)":"var(--terracotta)";
+  return html`<div class="ring-wrap">
+    <svg viewBox="0 0 200 200" class="ring">
+      <circle cx="100" cy="100" r=${r} class="ring-track"/>
+      <circle cx="100" cy="100" r=${r} class="ring-fill" style=${{stroke:col,strokeDasharray:c,strokeDashoffset:c*(1-pct)}}/>
+    </svg>
+    <div class="ring-center">
+      <span style=${{color:col,marginBottom:2}}><${I.Flame} size=${18}/></span>
+      <div class="ring-num" style=${{color:over?"var(--clay)":"var(--ink)"}}>${Math.abs(remaining)}</div>
+      <div class="ring-label">${over?"cal over":"cal left"}</div>
+      <div class="ring-detail">${consumed} / ${target}</div>
+    </div>
+  </div>`;
+}
+function Macro({color,label,value,target}){
+  const pct=target>0?Math.min((value/target)*100,100):0;
+  return html`<div class="macro-stat">
+    <div class="macro-top"><span class="dot" style=${{background:color}}></span><span class="macro-label">${label}</span></div>
+    <div class="macro-vals"><b>${value}</b><span>/ ${target}g</span></div>
+    <div class="bar"><div class="bar-fill" style=${{width:pct+"%",background:color}}></div></div>
+  </div>`;
+}
+function MealCard({row,onClick}){
+  return html`<button class="meal-card" onClick=${onClick}>
+    <${Monogram} name=${row.name} size=${54}/>
+    <div class="meal-body"><div class="meal-name">${row.name}</div>
+      <div class="meal-meta">${prettyTime(row.ts)} · ${row.protein}p · ${row.carbs}c · ${row.fat}f</div></div>
+    <div class="meal-kcal"><b>${row.kcal}</b><span>cal</span></div>
+  </button>`;
+}
+
+/* ----------------------------- log ----------------------------- */
+function LogPage({meals,onOpen,onAdd}){
+  const groups=useMemo(()=>{
+    const by={}; for(const m of meals)(by[m.dateKey]=by[m.dateKey]||[]).push(m);
+    return Object.keys(by).sort((a,b)=>a<b?1:-1).map(k=>({key:k,
+      rows:by[k].sort((a,b)=>b.ts-a.ts), total:by[k].reduce((s,r)=>s+r.kcal,0)}));
+  },[meals]);
+  if(meals.length===0) return html`<div class="page fade-in">
+    <button class="empty" onClick=${onAdd}><${I.List} size=${28}/>
+      <p class="empty-title">Your log is empty</p><p class="empty-sub">Every meal you save shows up here, newest first</p></button></div>`;
+  return html`<div class="page fade-in">
+    ${groups.map(g=>html`<div class="log-day" key=${g.key}>
+      <div class="log-day-head"><span class="log-date">${prettyDate(g.key)}</span><span class="log-total">${g.total} cal</span></div>
+      <div class="meal-list">${g.rows.map(r=>html`<${MealCard} key=${r.id} row=${r} onClick=${()=>onOpen(r.id)}/>`)}</div>
+    </div>`)}
+    <p class="footnote">Estimates are a guide, not medical advice.</p>
+  </div>`;
+}
+
+/* --------------------------- detail ---------------------------- */
+function Detail({row,onClose,onDelete}){
+  const [confirm,setConfirm]=useState(false);
+  if(!row) return null;
+  const col=tileColor(row.name);
+  return html`<div class="overlay center" onClick=${onClose}>
+    <div class="detail-card" onClick=${e=>e.stopPropagation()}>
+      <button class="x-btn" onClick=${onClose}><${I.X} size=${20}/></button>
+      <div class="detail-band" style=${{background:"linear-gradient(150deg,"+col+","+col+"bb)"}}><${Monogram} name=${row.name} size=${72}/></div>
+      <div class="detail-pad">
+        <div class="detail-name">${row.name}</div>
+        <div class="detail-time">${prettyDate(row.dateKey)} · ${prettyTime(row.ts)}</div>
+        <div class="detail-kcal"><${I.Flame} size=${18}/> ${row.kcal} <span class="u">calories</span></div>
+        <div class="detail-macros"><span><b>${row.protein}g</b> protein</span><span><b>${row.carbs}g</b> carbs</span><span><b>${row.fat}g</b> fat</span></div>
+        ${row.items && row.items.length>0 && html`<div>
+          <div class="break-title">Calorie breakdown</div>
+          ${row.items.map((it,i)=>html`<div class="break-row" key=${i}>
+            <span class="bn">${it.name}${(it.protein||it.carbs||it.fat)?html`<span class="bm">${it.protein||0}p · ${it.carbs||0}c · ${it.fat||0}f</span>`:null}</span>
+            <span class="bc">${it.calories} cal</span></div>`)}
+        </div>`}
+        ${row.description && html`<p class="detail-desc">${row.description}</p>`}
+        ${!confirm
+          ? html`<button class="danger-ghost" onClick=${()=>setConfirm(true)}><${I.Trash} size=${16}/> Delete entry</button>`
+          : html`<div class="confirm-row"><span>Delete this entry?</span>
+              <button class="danger-solid" onClick=${()=>onDelete(row.id)}>Delete</button>
+              <button class="ghost-sm" onClick=${()=>setConfirm(false)}>Keep</button></div>`}
+      </div>
+    </div>
+  </div>`;
+}
+
+/* --------------------------- add meal -------------------------- */
+function AddSheet({onClose,onSave}){
+  const [stage,setStage]=useState("pick");
+  const [dataUrl,setDataUrl]=useState(null);
+  const [err,setErr]=useState("");
+  const [name,setName]=useState("");
+  const [desc,setDesc]=useState("");
+  const [conf,setConf]=useState("");
+  const [items,setItems]=useState([]);
+  const fileRef=useRef(null);
+
+  const totals=useMemo(()=>sumItems(items),[items]);
+
+  const handleFile=async(file)=>{
+    if(!file) return;
+    try{
+      const r=await fileToResized(file);
+      setDataUrl(r.dataUrl); setStage("analyzing");
+      try{
+        const est=await estimate(r.base64,r.mediaType);
+        setName(est.name||"Meal"); setDesc(est.description||""); setConf(est.confidence||"medium");
+        const its=(Array.isArray(est.items)?est.items:[]).map(it=>({
+          name:it.name||"Item", calories:Math.max(0,Math.round(+it.calories||0)),
+          protein:Math.max(0,Math.round(+it.protein_g||+it.protein||0)),
+          carbs:Math.max(0,Math.round(+it.carbs_g||+it.carbs||0)),
+          fat:Math.max(0,Math.round(+it.fat_g||+it.fat||0)),
+        }));
+        if(its.length===0 && est.calories) its.push({name:est.name||"Meal",calories:Math.round(est.calories),
+          protein:Math.round(est.protein_g||0),carbs:Math.round(est.carbs_g||0),fat:Math.round(est.fat_g||0)});
+        setItems(its); setStage("review");
+      }catch(e){ setErr(e.message||"Couldn't analyze the photo."); setItems([]); setStage("review"); }
+    }catch{ setErr("Couldn't read that image."); setStage("review"); }
+  };
+  const startManual=()=>{ setDataUrl(null); setName(""); setDesc(""); setConf("manual"); setItems([{name:"",calories:0,protein:0,carbs:0,fat:0}]); setStage("review"); };
+  const setItem=(i,k,v)=>setItems(arr=>arr.map((it,j)=>j===i?{...it,[k]:k==="name"?v:Math.max(0,parseInt(v||"0",10)||0)}:it));
+  const addItem=()=>setItems(arr=>[...arr,{name:"",calories:0,protein:0,carbs:0,fat:0}]);
+  const delItem=(i)=>setItems(arr=>arr.filter((_,j)=>j!==i));
+
+  return html`<div class="overlay" onClick=${onClose}>
+    <div class="sheet" onClick=${e=>e.stopPropagation()}>
+      <div class="sheet-handle"></div>
+      <div class="sheet-head"><h3>${stage==="review"?"Confirm your meal":"Add a meal"}</h3>
+        <button class="x-btn-sm" onClick=${onClose}><${I.X} size=${18}/></button></div>
+
+      ${stage==="pick" && html`<div class="pick-stage">
+        <input ref=${fileRef} type="file" accept="image/*" capture="environment" hidden onChange=${e=>handleFile(e.target.files[0])}/>
+        <button class="dropzone" onClick=${()=>fileRef.current && fileRef.current.click()}>
+          <div class="dz-ico"><${I.Camera} size=${30}/></div>
+          <div class="dz-title">Take or choose a photo</div>
+          <div class="dz-sub">Claude estimates each part of the meal for you</div>
+        </button>
+        <button class="link-btn" onClick=${startManual}>Enter it manually instead</button>
+      </div>`}
+
+      ${stage==="analyzing" && html`<div class="analyzing">
+        ${dataUrl && html`<img src=${dataUrl} class="analyze-img"/>`}
+        <div class="analyze-status"><${I.Loader} size=${18} className="spin"/> Asking Claude what's on your plate…</div>
+      </div>`}
+
+      ${stage==="review" && html`<div class="review">
+        ${dataUrl && html`<img src=${dataUrl} class="review-img"/>`}
+        ${err && html`<div class="inline-warn"><${I.Alert} size=${15}/> ${err} Add the parts below.</div>`}
+        ${conf && conf!=="manual" && !err && html`<div class="conf-pill">Claude's estimate · ${conf} confidence — tweak anything that looks off</div>`}
+        <label class="fld"><span>Meal</span>
+          <input value=${name} placeholder="e.g. Chicken burrito bowl" onChange=${e=>setName(e.target.value)}/></label>
+
+        <div class="items-head"><span>Parts of this meal & their calories</span>
+          <button class="add-item" onClick=${addItem}><${I.Plus} size=${14}/> Add</button></div>
+        ${items.map((it,i)=>html`<div class="item-row" key=${i}>
+          <input class="iname" value=${it.name} placeholder="Component" onChange=${e=>setItem(i,"name",e.target.value)}/>
+          <input class="ical" type="number" inputmode="numeric" value=${it.calories} onChange=${e=>setItem(i,"calories",e.target.value)}/>
+          <span class="unit">cal</span>
+          <button class="item-del" onClick=${()=>delItem(i)}><${I.X} size=${15}/></button>
+        </div>`)}
+        <div class="item-total"><span>Total</span><span><b>${totals.calories}</b> cal · ${totals.protein}p · ${totals.carbs}c · ${totals.fat}f</span></div>
+
+        <label class="fld"><span>Description</span>
+          <textarea rows=${2} value=${desc} placeholder="What's in it / portion notes" onChange=${e=>setDesc(e.target.value)}></textarea></label>
+
+        <button class="save-btn" disabled=${!name.trim() || items.length===0}
+          onClick=${()=>onSave({name:name.trim()||"Meal", description:desc,
+            items:items.filter(it=>it.name.trim()||it.calories), calories:totals.calories,
+            protein:totals.protein, carbs:totals.carbs, fat:totals.fat})}>
+          <${I.Check} size=${18}/> Save meal
+        </button>
+        <p class="save-note">The photo is only used for this estimate and isn't saved — your log stays light and syncs instantly across devices.</p>
+      </div>`}
+    </div>
+  </div>`;
+}
+
+/* --------------------------- profile --------------------------- */
+const blankForm={units:"imperial",sex:"female",age:"",ft:"",in:"",cm:"",lb:"",kg:"",activity:"light",goal:"maintain",rate:1};
+function ProfilePage({profile,onSave,onExport,onImport,email}){
+  const [f,setF]=useState(blankForm);
+  const [saved,setSaved]=useState(false);
+  const [importMsg,setImportMsg]=useState("");
+  const importRef=useRef(null);
+
+  useEffect(()=>{
+    if(!profile) return;
+    const ft=Math.floor(profile.heightCm/30.48);
+    const inch=Math.round((profile.heightCm/2.54)-ft*12);
+    setF({units:profile.units||"imperial",sex:profile.sex||"female",age:String(profile.age||""),
+      ft:String(ft||""),in:String(inch||""),cm:String(Math.round(profile.heightCm)||""),
+      lb:String(Math.round(kgToLb(profile.weightKg))||""),kg:String(Math.round(profile.weightKg)||""),
+      activity:profile.activity||"light",goal:profile.goal||"maintain",rate:profile.rate!=null?profile.rate:1});
+  },[profile]);
+
+  const draft=useMemo(()=>{
+    let heightCm=0,weightKg=0;
+    if(f.units==="imperial"){ heightCm=((parseFloat(f.ft)||0)*12+(parseFloat(f.in)||0))*2.54; weightKg=lbToKg(parseFloat(f.lb)||0); }
+    else { heightCm=parseFloat(f.cm)||0; weightKg=parseFloat(f.kg)||0; }
+    return {units:f.units,sex:f.sex,age:parseInt(f.age,10)||0,heightCm,weightKg,activity:f.activity,goal:f.goal,rate:Number(f.rate)};
+  },[f]);
+  const preview=useMemo(()=>computeTargets(draft),[draft]);
+  const set=(k,v)=>{ setF(s=>({...s,[k]:v})); setSaved(false); };
+  const handleSave=async()=>{ await onSave(draft); setSaved(true); setTimeout(()=>setSaved(false),2000); };
+  const handleImport=async(file)=>{ if(!file) return;
+    try{ const r=await onImport(file); setImportMsg("Restored — added "+r.count+" meals."); }
+    catch{ setImportMsg("That file couldn't be read."); } setTimeout(()=>setImportMsg(""),4000); };
+  const rateOptions = f.goal==="gain"?[0.25,0.5,1]:[0.5,1,1.5,2];
+
+  return html`<div class="page fade-in">
+    <div class="target-preview">
+      <div class="tp-num">${preview.calories}</div><div class="tp-label">daily calories</div>
+      <div class="tp-grid"><div><b>${preview.protein}g</b><span>protein</span></div>
+        <div><b>${preview.carbs}g</b><span>carbs</span></div><div><b>${preview.fat}g</b><span>fat</span></div></div>
+      ${preview.valid && html`<div class="tp-foot">BMR ${preview.bmr} · Maintenance ${preview.tdee} cal</div>`}
+    </div>
+
+    <${Card} title="Measurements">
+      <${Seg} value=${f.units} onChange=${v=>set("units",v)} options=${[{v:"imperial",l:"lb / ft"},{v:"metric",l:"kg / cm"}]}/>
+      <${Seg} value=${f.sex} onChange=${v=>set("sex",v)} options=${[{v:"female",l:"Female"},{v:"male",l:"Male"}]}/>
+      <label class="fld"><span>Age</span><input type="number" inputmode="numeric" value=${f.age} placeholder="years" onChange=${e=>set("age",e.target.value)}/></label>
+      ${f.units==="imperial"
+        ? html`<div class="fld-row">
+            <label class="fld"><span>Height (ft)</span><input type="number" inputmode="numeric" value=${f.ft} onChange=${e=>set("ft",e.target.value)}/></label>
+            <label class="fld"><span>Height (in)</span><input type="number" inputmode="numeric" value=${f.in} onChange=${e=>set("in",e.target.value)}/></label>
+          </div><label class="fld"><span>Weight (lb)</span><input type="number" inputmode="numeric" value=${f.lb} onChange=${e=>set("lb",e.target.value)}/></label>`
+        : html`<div class="fld-row">
+            <label class="fld"><span>Height (cm)</span><input type="number" inputmode="numeric" value=${f.cm} onChange=${e=>set("cm",e.target.value)}/></label>
+            <label class="fld"><span>Weight (kg)</span><input type="number" inputmode="numeric" value=${f.kg} onChange=${e=>set("kg",e.target.value)}/></label>
+          </div>`}
+    </${Card}>
+
+    <${Card} title="Activity">
+      <div class="opt-list">${ACTIVITY.map(a=>html`<button key=${a.key} class=${"opt"+(f.activity===a.key?" opt-on":"")} onClick=${()=>set("activity",a.key)}>
+        <div><div class="opt-l">${a.label}</div><div class="opt-h">${a.hint}</div></div>${f.activity===a.key?html`<${I.Check} size=${16}/>`:null}</button>`)}</div>
+    </${Card}>
+
+    <${Card} title="Goal">
+      <${Seg} value=${f.goal} onChange=${v=>set("goal",v)} options=${GOALS.map(g=>({v:g.key,l:g.label}))}/>
+      ${f.goal!=="maintain" && html`<div class="rate-block">
+        <div class="rate-label">${f.goal==="lose"?"Lose":"Gain"} ${f.rate} lb / week</div>
+        <div class="rate-opts">${rateOptions.map(r=>html`<button key=${r} class=${"rate-chip"+(Number(f.rate)===r?" on":"")} onClick=${()=>set("rate",r)}>${r}</button>`)}</div>
+      </div>`}
+    </${Card}>
+
+    <button class=${"save-btn"+(saved?" saved":"")} onClick=${handleSave}>
+      ${saved?html`<${I.Check} size=${18}/> Saved`:html`<${I.Pencil} size=${16}/> Save goals`}</button>
+
+    <${Card} title="Account & backup">
+      <p class="sync-hint">Signed in as <b>${email}</b>. Your log syncs automatically on every device where you sign in with this account.</p>
+      <input ref=${importRef} type="file" accept="application/json,.json" hidden onChange=${e=>{handleImport(e.target.files[0]); e.target.value="";}}/>
+      <div class="backup-row">
+        <button class="backup-btn" onClick=${onExport}><${I.Down} size=${16}/> Export</button>
+        <button class="backup-btn" onClick=${()=>importRef.current && importRef.current.click()}><${I.Up} size=${16}/> Import</button>
+      </div>
+      ${importMsg && html`<div class="conf-pill"><${I.Check} size=${13}/> ${importMsg}</div>`}
+      <button class="signout" onClick=${()=>supabase.auth.signOut()}>Sign out</button>
+    </${Card}>
+
+    <p class="footnote">Targets use the Mifflin-St Jeor equation — general estimates, not medical advice. For clinical needs, see a doctor or registered dietitian.</p>
+  </div>`;
+}
+
+/* --------------------------- small UI -------------------------- */
+function Card({title,children}){
+  return html`<section class="card"><div class="card-title">${title}</div><div class="card-body">${children}</div></section>`;
+}
+function Seg({value,onChange,options}){
+  return html`<div class="seg">${options.map(o=>html`<button key=${o.v} class=${"seg-btn"+(value===o.v?" seg-on":"")} onClick=${()=>onChange(o.v)}>${o.l}</button>`)}</div>`;
+}
+
+/* ----------------------------- mount --------------------------- */
+createRoot(document.getElementById("root")).render(html`<${Root}/>`);
+
+/* register service worker for installable PWA */
+if("serviceWorker" in navigator){
+  window.addEventListener("load",()=>navigator.serviceWorker.register("/sw.js").catch(()=>{}));
+}
+</script>
+</body>
+</html>

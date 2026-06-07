@@ -7,17 +7,17 @@
 //   SUPABASE_ANON_KEY   (optional, enables auth check)
 //   ESTIMATE_MODEL      (optional, default claude-sonnet-4-6)
 
-const PROMPT = `You are a careful nutrition estimator. Look at the food in this image and break the meal into its visible components.
+const PROMPT = `You are a careful nutrition estimator. You may be given a food photo, a written description of a meal, or both. Break the meal into its components and estimate calories and macros for each.
 Respond with ONLY a raw JSON object (no markdown, no backticks, no extra text) with exactly these keys:
 {
   "name": "short overall dish name",
-  "description": "1-2 sentences describing what you see and the portion you assumed",
+  "description": "1-2 sentences on what you based the estimate on and the portion you assumed",
   "items": [
     {"name": "component name", "calories": integer, "protein_g": integer, "carbs_g": integer, "fat_g": integer}
   ],
   "confidence": "low" | "medium" | "high"
 }
-Each entry in "items" is one part of the meal (e.g. the chicken, the rice, the dressing) with its own calories and macros for the portion shown. Include every visible component. If no food is visible, return an empty "items" array and say so in "description".`;
+Each entry in "items" is one part of the meal (e.g. the chicken, the rice, the dressing) with its own calories and macros for the portion shown or described. Include every component you can identify. When both a photo and a description are given, treat the description as the person's correction or clarification and prefer it where they conflict. If you have neither a clear photo nor a usable description, return an empty "items" array and explain in "description".`;
 
 module.exports = async (req, res) => {
   if (req.method === "OPTIONS") { setCors(res); return res.status(204).end(); }
@@ -43,7 +43,15 @@ module.exports = async (req, res) => {
     const body = await readJson(req);
     const image = body && body.image;
     const mediaType = (body && body.mediaType) || "image/jpeg";
-    if (!image) return res.status(400).json({ error: "No image provided" });
+    const noteText = (body && typeof body.text === "string") ? body.text.trim() : "";
+    if (!image && !noteText) return res.status(400).json({ error: "Provide a photo or a description" });
+
+    const content = [];
+    if (image) content.push({ type: "image", source: { type: "base64", media_type: mediaType, data: image } });
+    const userText = noteText
+      ? PROMPT + "\n\nThe person describes the meal as: \"" + noteText + "\"" + (image ? " Use both the photo and this description." : "")
+      : PROMPT;
+    content.push({ type: "text", text: userText });
 
     const model = process.env.ESTIMATE_MODEL || "claude-sonnet-4-6";
     const ar = await fetch("https://api.anthropic.com/v1/messages", {
@@ -56,13 +64,7 @@ module.exports = async (req, res) => {
       body: JSON.stringify({
         model,
         max_tokens: 1024,
-        messages: [{
-          role: "user",
-          content: [
-            { type: "image", source: { type: "base64", media_type: mediaType, data: image } },
-            { type: "text", text: PROMPT },
-          ],
-        }],
+        messages: [{ role: "user", content }],
       }),
     });
 

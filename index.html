@@ -138,6 +138,27 @@ body{
 .review{display:flex;flex-direction:column;gap:12px;}
 .review-img{width:100%;height:170px;object-fit:cover;border-radius:16px;}
 .conf-pill{font-size:12px;color:#7A5A33;background:#FBEFDD;border:1px solid #ECD9BD;padding:8px 12px;border-radius:12px;line-height:1.4;}
+
+/* compose + refine */
+.compose{display:flex;flex-direction:column;gap:13px;padding:4px 0 2px;}
+.photo-slot{position:relative;width:100%;}
+.photo-thumb{width:100%;height:180px;object-fit:cover;border-radius:18px;display:block;}
+.photo-actions{position:absolute;left:0;right:0;bottom:0;display:flex;gap:8px;justify-content:center;
+  padding:12px 10px 10px;background:linear-gradient(transparent,rgba(43,33,23,.6));border-radius:0 0 18px 18px;}
+.mini-btn{display:flex;align-items:center;gap:6px;background:rgba(255,253,248,.95);border:none;border-radius:10px;
+  padding:8px 12px;font-family:inherit;font-weight:600;font-size:13px;color:var(--ink);cursor:pointer;}
+.mini-btn:active{transform:scale(.96);}
+.mini-btn.danger{color:var(--clay);}
+.reest-btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;background:var(--paper-2);
+  border:1px solid var(--line);color:var(--terracotta);border-radius:13px;padding:12px;font-family:inherit;
+  font-weight:700;font-size:14.5px;cursor:pointer;transition:background .15s,border-color .15s;}
+.reest-btn:hover{background:#FBEFE7;border-color:var(--terracotta);}
+.reest-btn:active{transform:scale(.99);}
+.reest-btn:disabled{opacity:.45;cursor:not-allowed;}
+.assumed-pill{font-size:12.5px;color:var(--ink-soft);background:var(--card);border:1px solid var(--line);
+  border-radius:12px;padding:10px 12px;line-height:1.45;}
+.assumed-pill b{font-weight:700;color:var(--ink);}
+.optional-tag{color:var(--muted);font-weight:500;}
 .inline-warn{display:flex;align-items:flex-start;gap:7px;font-size:13px;color:#9A3B25;background:#FBE6DF;border:1px solid #F0CBBE;padding:9px 12px;border-radius:12px;line-height:1.4;}
 
 .fld{display:flex;flex-direction:column;gap:5px;flex:1;}
@@ -254,8 +275,8 @@ const html = htm.bind(React.createElement);
    The anon key is safe to expose — your data is protected by
    Row Level Security. The ANTHROPIC key lives only on the server. */
 const CONFIG = {
-  SUPABASE_URL: "https://pzsghquoynurozglgddn.supabase.co",
-  SUPABASE_ANON_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB6c2docXVveW51cm96Z2xnZGRuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA1OTY2NTgsImV4cCI6MjA5NjE3MjY1OH0.snvXZeEtMXJ-pveGqih6kiGm4A0rZ3AzLnz-DCYyD08",
+  SUPABASE_URL: "https://YOUR-PROJECT.supabase.co",
+  SUPABASE_ANON_KEY: "YOUR-SUPABASE-ANON-KEY",
   ESTIMATE_URL: "/api/estimate",
 };
 const configured = !CONFIG.SUPABASE_URL.includes("YOUR-PROJECT") && !CONFIG.SUPABASE_ANON_KEY.includes("YOUR-");
@@ -347,13 +368,15 @@ function fileToResized(file, maxDim=760, quality=0.72){
 }
 
 /* ------------------------- estimate call ----------------------- */
-async function estimate(base64, mediaType){
+async function estimate(base64, mediaType, text){
   const { data } = await supabase.auth.getSession();
   const token = data && data.session ? data.session.access_token : "";
+  const body = { text: text || "" };
+  if(base64){ body.image = base64; body.mediaType = mediaType || "image/jpeg"; }
   const r = await fetch(CONFIG.ESTIMATE_URL, {
     method:"POST",
     headers:{ "Content-Type":"application/json", "Authorization":"Bearer "+token },
-    body: JSON.stringify({ image: base64, mediaType }),
+    body: JSON.stringify(body),
   });
   if(!r.ok){ const t=await r.text().catch(()=> ""); throw new Error("Estimate failed ("+r.status+") "+t.slice(0,120)); }
   return await r.json();
@@ -645,37 +668,55 @@ function Detail({row,onClose,onDelete}){
 /* --------------------------- add meal -------------------------- */
 function AddSheet({onClose,onSave}){
   const [stage,setStage]=useState("pick");
-  const [dataUrl,setDataUrl]=useState(null);
+  const [photo,setPhoto]=useState(null);     // {dataUrl,base64,mediaType} | null
+  const [note,setNote]=useState("");         // your words — sent to Claude AND saved as the description
+  const [assumed,setAssumed]=useState("");   // what Claude said it assumed (read-only)
   const [err,setErr]=useState("");
   const [name,setName]=useState("");
-  const [desc,setDesc]=useState("");
   const [conf,setConf]=useState("");
   const [items,setItems]=useState([]);
-  const fileRef=useRef(null);
+  const fileRef=useRef(null);     // photo picker on the compose screen
+  const reFileRef=useRef(null);   // "take a different photo" on the review screen
 
   const totals=useMemo(()=>sumItems(items),[items]);
+  const canEstimate = !!photo || note.trim().length>0;
 
-  const handleFile=async(file)=>{
-    if(!file) return;
+  // Resize + store a chosen photo, without estimating yet (compose screen).
+  const choosePhoto=async(file)=>{
+    if(!file) return; setErr("");
+    try{ const r=await fileToResized(file); setPhoto({dataUrl:r.dataUrl,base64:r.base64,mediaType:r.mediaType}); }
+    catch{ setErr("Couldn't read that image."); }
+  };
+  // Pick a new photo from the review screen, then estimate again right away.
+  const choosePhotoAndEstimate=async(file)=>{
+    if(!file) return; setErr("");
     try{
       const r=await fileToResized(file);
-      setDataUrl(r.dataUrl); setStage("analyzing");
-      try{
-        const est=await estimate(r.base64,r.mediaType);
-        setName(est.name||"Meal"); setDesc(est.description||""); setConf(est.confidence||"medium");
-        const its=(Array.isArray(est.items)?est.items:[]).map(it=>({
-          name:it.name||"Item", calories:Math.max(0,Math.round(+it.calories||0)),
-          protein:Math.max(0,Math.round(+it.protein_g||+it.protein||0)),
-          carbs:Math.max(0,Math.round(+it.carbs_g||+it.carbs||0)),
-          fat:Math.max(0,Math.round(+it.fat_g||+it.fat||0)),
-        }));
-        if(its.length===0 && est.calories) its.push({name:est.name||"Meal",calories:Math.round(est.calories),
-          protein:Math.round(est.protein_g||0),carbs:Math.round(est.carbs_g||0),fat:Math.round(est.fat_g||0)});
-        setItems(its); setStage("review");
-      }catch(e){ setErr(e.message||"Couldn't analyze the photo."); setItems([]); setStage("review"); }
-    }catch{ setErr("Couldn't read that image."); setStage("review"); }
+      const p={dataUrl:r.dataUrl,base64:r.base64,mediaType:r.mediaType};
+      setPhoto(p); runEstimate(p, note);
+    }catch{ setErr("Couldn't read that image."); }
   };
-  const startManual=()=>{ setDataUrl(null); setName(""); setDesc(""); setConf("manual"); setItems([{name:"",calories:0,protein:0,carbs:0,fat:0}]); setStage("review"); };
+
+  // Estimate from whatever we have — photo, description, or both.
+  const runEstimate=async(p=photo, text=note)=>{
+    if(!p && !text.trim()) return;
+    setErr(""); setStage("analyzing");
+    try{
+      const est=await estimate(p?p.base64:null, p?p.mediaType:null, text.trim());
+      setName(est.name||"Meal"); setAssumed(est.description||""); setConf(est.confidence||"medium");
+      const its=(Array.isArray(est.items)?est.items:[]).map(it=>({
+        name:it.name||"Item", calories:Math.max(0,Math.round(+it.calories||0)),
+        protein:Math.max(0,Math.round(+it.protein_g||+it.protein||0)),
+        carbs:Math.max(0,Math.round(+it.carbs_g||+it.carbs||0)),
+        fat:Math.max(0,Math.round(+it.fat_g||+it.fat||0)),
+      }));
+      if(its.length===0 && est.calories) its.push({name:est.name||"Meal",calories:Math.round(est.calories),
+        protein:Math.round(est.protein_g||0),carbs:Math.round(est.carbs_g||0),fat:Math.round(est.fat_g||0)});
+      setItems(its); setStage("review");
+    }catch(e){ setErr(e.message||"Couldn't get an estimate."); setStage("review"); }
+  };
+
+  const startManual=()=>{ setPhoto(null); setName(""); setNote(""); setAssumed(""); setConf("manual"); setItems([{name:"",calories:0,protein:0,carbs:0,fat:0}]); setStage("review"); };
   const setItem=(i,k,v)=>setItems(arr=>arr.map((it,j)=>j===i?{...it,[k]:k==="name"?v:Math.max(0,parseInt(v||"0",10)||0)}:it));
   const addItem=()=>setItems(arr=>[...arr,{name:"",calories:0,protein:0,carbs:0,fat:0}]);
   const delItem=(i)=>setItems(arr=>arr.filter((_,j)=>j!==i));
@@ -683,28 +724,66 @@ function AddSheet({onClose,onSave}){
   return html`<div class="overlay" onClick=${onClose}>
     <div class="sheet" onClick=${e=>e.stopPropagation()}>
       <div class="sheet-handle"></div>
-      <div class="sheet-head"><h3>${stage==="review"?"Confirm your meal":"Add a meal"}</h3>
+      <div class="sheet-head"><h3>${stage==="review"?"Check your meal":"Add a meal"}</h3>
         <button class="x-btn-sm" onClick=${onClose}><${I.X} size=${18}/></button></div>
 
-      ${stage==="pick" && html`<div class="pick-stage">
-        <input ref=${fileRef} type="file" accept="image/*" capture="environment" hidden onChange=${e=>handleFile(e.target.files[0])}/>
-        <button class="dropzone" onClick=${()=>fileRef.current && fileRef.current.click()}>
-          <div class="dz-ico"><${I.Camera} size=${30}/></div>
-          <div class="dz-title">Take or choose a photo</div>
-          <div class="dz-sub">Claude estimates each part of the meal for you</div>
+      ${stage==="pick" && html`<div class="compose">
+        <input ref=${fileRef} type="file" accept="image/*" capture="environment" hidden
+          onChange=${e=>{choosePhoto(e.target.files[0]); e.target.value="";}}/>
+        ${photo
+          ? html`<div class="photo-slot">
+              <img src=${photo.dataUrl} class="photo-thumb"/>
+              <div class="photo-actions">
+                <button class="mini-btn" onClick=${()=>fileRef.current && fileRef.current.click()}><${I.Camera} size=${15}/> Change photo</button>
+                <button class="mini-btn danger" onClick=${()=>setPhoto(null)}><${I.X} size=${15}/> Remove</button>
+              </div></div>`
+          : html`<button class="dropzone" onClick=${()=>fileRef.current && fileRef.current.click()}>
+              <div class="dz-ico"><${I.Camera} size=${30}/></div>
+              <div class="dz-title">Add a photo <span class="optional-tag">(optional)</span></div>
+              <div class="dz-sub">Snap your plate — or skip it and just describe the meal below</div>
+            </button>`}
+        <label class="fld"><span>Describe it <span class="optional-tag">(optional)</span></span>
+          <textarea rows=${3} value=${note} placeholder="e.g. chicken burrito bowl, brown rice, no cheese, extra guac"
+            onChange=${e=>setNote(e.target.value)}></textarea></label>
+        <button class="save-btn" disabled=${!canEstimate} onClick=${()=>runEstimate()}>
+          <${I.Spark} size=${18}/> Estimate
         </button>
+        <p class="save-note">Add a photo, a description, or both — whatever you've got. You'll be able to change either one before saving.</p>
         <button class="link-btn" onClick=${startManual}>Enter it manually instead</button>
       </div>`}
 
       ${stage==="analyzing" && html`<div class="analyzing">
-        ${dataUrl && html`<img src=${dataUrl} class="analyze-img"/>`}
-        <div class="analyze-status"><${I.Loader} size=${18} className="spin"/> Asking Claude what's on your plate…</div>
+        ${photo && html`<img src=${photo.dataUrl} class="analyze-img"/>`}
+        <div class="analyze-status"><${I.Loader} size=${18} className="spin"/> ${photo?"Asking Claude what's on your plate…":"Asking Claude to estimate this…"}</div>
       </div>`}
 
       ${stage==="review" && html`<div class="review">
-        ${dataUrl && html`<img src=${dataUrl} class="review-img"/>`}
-        ${err && html`<div class="inline-warn"><${I.Alert} size=${15}/> ${err} Add the parts below.</div>`}
-        ${conf && conf!=="manual" && !err && html`<div class="conf-pill">Claude's estimate · ${conf} confidence — tweak anything that looks off</div>`}
+        <input ref=${reFileRef} type="file" accept="image/*" capture="environment" hidden
+          onChange=${e=>{choosePhotoAndEstimate(e.target.files[0]); e.target.value="";}}/>
+        ${photo
+          ? html`<div class="photo-slot">
+              <img src=${photo.dataUrl} class="photo-thumb"/>
+              <div class="photo-actions">
+                <button class="mini-btn" onClick=${()=>reFileRef.current && reFileRef.current.click()}><${I.Camera} size=${15}/> Take a different photo</button>
+                <button class="mini-btn danger" onClick=${()=>setPhoto(null)}><${I.X} size=${15}/> Remove</button>
+              </div></div>`
+          : html`<button class="dropzone" onClick=${()=>reFileRef.current && reFileRef.current.click()}>
+              <div class="dz-ico"><${I.Camera} size=${26}/></div>
+              <div class="dz-title">Add a photo <span class="optional-tag">(optional)</span></div>
+              <div class="dz-sub">Add one and it'll re-estimate from the picture</div>
+            </button>`}
+
+        ${err && html`<div class="inline-warn"><${I.Alert} size=${15}/> ${err} Edit the parts below, or change the photo/description and try again.</div>`}
+        ${assumed && conf!=="manual" && !err && html`<div class="assumed-pill"><b>Claude assumed:</b> ${assumed}</div>`}
+        ${conf && conf!=="manual" && !err && html`<div class="conf-pill">Claude's estimate · ${conf} confidence — change the photo or description and re-estimate, or tweak any line below</div>`}
+
+        <label class="fld"><span>Description</span>
+          <textarea rows=${2} value=${note} placeholder="Describe or correct the meal — e.g. it's steak not short rib, and no rice"
+            onChange=${e=>setNote(e.target.value)}></textarea></label>
+        <button class="reest-btn" disabled=${!canEstimate} onClick=${()=>runEstimate()}>
+          <${I.Spark} size=${16}/> Re-estimate from photo & description
+        </button>
+
         <label class="fld"><span>Meal</span>
           <input value=${name} placeholder="e.g. Chicken burrito bowl" onChange=${e=>setName(e.target.value)}/></label>
 
@@ -718,16 +797,13 @@ function AddSheet({onClose,onSave}){
         </div>`)}
         <div class="item-total"><span>Total</span><span><b>${totals.calories}</b> cal · ${totals.protein}p · ${totals.carbs}c · ${totals.fat}f</span></div>
 
-        <label class="fld"><span>Description</span>
-          <textarea rows=${2} value=${desc} placeholder="What's in it / portion notes" onChange=${e=>setDesc(e.target.value)}></textarea></label>
-
         <button class="save-btn" disabled=${!name.trim() || items.length===0}
-          onClick=${()=>onSave({name:name.trim()||"Meal", description:desc,
+          onClick=${()=>onSave({name:name.trim()||"Meal", description:note.trim()||assumed,
             items:items.filter(it=>it.name.trim()||it.calories), calories:totals.calories,
             protein:totals.protein, carbs:totals.carbs, fat:totals.fat})}>
-          <${I.Check} size=${18}/> Save meal
+          <${I.Check} size=${18}/> Confirm & save
         </button>
-        <p class="save-note">The photo is only used for this estimate and isn't saved — your log stays light and syncs instantly across devices.</p>
+        <p class="save-note">Nothing is saved until you confirm. The photo is only used for the estimate and isn't stored — your log stays light and syncs instantly across devices.</p>
       </div>`}
     </div>
   </div>`;

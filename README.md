@@ -1,8 +1,41 @@
-# Plate — your cross-device food log
+# Plate
 
-Snap a photo of a meal, Claude breaks it into its parts with calories for each,
-you confirm, and it's saved to a log that syncs live across your phone and
-computer. Photos are used only for the estimate and then discarded.
+**Snap a photo of a meal (or just describe it) and get an itemized calorie and macro estimate that syncs across your phone and computer.**
+
+![Today view, the estimate editor, and the history log](docs/screenshots.png)
+
+<sub>Screenshots show demo data.</sub>
+
+## Features
+
+- **Photo or text in, itemized estimate out.** Claude splits a meal into its components (the chicken, the rice, the dressing) with calories, protein, carbs, and fat for each. You can edit any line before saving.
+- **Personal targets.** Daily calorie and macro goals from the Mifflin-St Jeor equation, based on your height, weight, age, activity, and goal.
+- **Live sync across devices** through Supabase Realtime. Log on your phone and it shows up on your laptop.
+- **Installable PWA.** Add it to your home screen on iPhone or Android.
+- **Private by design.** Photos are used only for the estimate and never stored. Postgres Row Level Security means each account can only read its own rows. The Anthropic key lives only on the server.
+- **Backup and restore** to a JSON file. Imports are validated and de-duplicated.
+
+## Tech stack
+
+React 18 + htm (no build step) · Supabase (Postgres, Auth, Realtime, RLS) · Vercel serverless function (Node) · Anthropic Claude API (vision) · Service worker + web manifest
+
+## Security
+
+- The estimate endpoint **requires a signed-in Supabase user** and refuses to run if it isn't configured, so nobody can spend your API credits anonymously.
+- `ALLOWED_EMAILS` limits estimates to your own account(s). Set it, or turn off new sign-ups in Supabase (Step 6 below).
+- Input is validated (image type, size, and description length), and upstream errors are logged server-side rather than returned to the browser.
+- No wildcard CORS. Security headers (HSTS, nosniff, frame denial, permissions policy) are set in `vercel.json`.
+- The Supabase **anon key** in `index.html` is designed to be public. Data access is enforced by the RLS policies in `schema.sql`.
+
+## Tests
+
+```bash
+node --test        # Node 18+; mocks Supabase and Anthropic, needs no keys
+```
+
+---
+
+## Deploy your own
 
 This is a real app you host yourself. Day-to-day it's effortless; the one-time
 setup below takes about 20–30 minutes and uses two free services plus your own
@@ -17,6 +50,7 @@ schema.sql              Database tables to paste into Supabase
 manifest.webmanifest    Makes it installable on your phone
 sw.js  icon.svg         PWA support
 vercel.json  .env.example
+tests/                  API tests (node --test)
 ```
 
 ## Step 1 — Create the database (Supabase, free)
@@ -68,6 +102,8 @@ The easiest path uses a GitHub repo:
    - `ANTHROPIC_API_KEY` = your Anthropic key
    - `SUPABASE_URL` = your Supabase Project URL
    - `SUPABASE_ANON_KEY` = your Supabase anon key
+   - `ALLOWED_EMAILS` = the email(s) you'll sign in with, comma-separated
+     (only these accounts can run estimates on your key)
    Then **Redeploy** (Deployments → ⋯ → Redeploy) so the keys take effect.
 
 Vercel gives you a URL like `https://plate-xxxx.vercel.app`. That's your app.
@@ -90,6 +126,13 @@ If you turned email confirmation ON in Step 1.3, also set
 **Authentication → URL Configuration → Site URL** in Supabase to your Vercel URL
 so the confirmation link returns to your app.
 
+## Step 6 — Lock it down
+
+Once you've created your own account, go to Supabase → **Authentication →
+Sign In / Providers** and turn **Allow new users to sign up** OFF. Together
+with `ALLOWED_EMAILS`, this means a stranger who finds your URL can't create
+an account or run estimates on your API key.
+
 ## Notes
 
 - **Costs:** Supabase and Vercel free tiers are plenty for personal use. You
@@ -99,8 +142,13 @@ so the confirmation link returns to your app.
   with the `ESTIMATE_MODEL` env var (`claude-haiku-4-5-20251001` is cheaper).
 - **Backups:** the **You** tab has Export/Import (a JSON file) if you ever want
   a copy or to move accounts.
-- **Privacy/security:** the API key lives only on Vercel. The function checks
-  that requests come from a signed-in user before spending credits.
+- **Privacy/security:** the API key lives only on Vercel. The function
+  requires a signed-in user (and, with `ALLOWED_EMAILS`, one of yours) before
+  spending credits. See the Security section above.
 - **Updating the app:** edit the files, push to GitHub (or re-run `vercel`),
   and it redeploys. Your data is in Supabase, so it's untouched by redeploys —
   no data loss, unlike the published-artifact approach.
+
+## License
+
+MIT. See [LICENSE](LICENSE).

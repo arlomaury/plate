@@ -499,12 +499,14 @@ function App({session}){
   const addEntry = async (entry)=>{
     const row = { user_id:userId, ts:new Date().toISOString(), name:entry.name, description:entry.description||"",
       items:entry.items||[], kcal:entry.calories, protein:entry.protein, carbs:entry.carbs, fat:entry.fat };
-    const { data } = await supabase.from("meals").insert(row).select().single();
+    const { data, error } = await supabase.from("meals").insert(row).select().single();
+    if(error){ alert("Couldn't save that meal - check your connection and try again."); throw error; }
     if(data) setMeals(m=>[rowToMeal(data),...m]);
   };
   const deleteEntry = async (id)=>{
     setMeals(m=>m.filter(x=>x.id!==id)); setDetailId(null);
-    await supabase.from("meals").delete().eq("id",id);
+    const { error } = await supabase.from("meals").delete().eq("id",id);
+    if(error){ alert("Couldn't delete that meal - it has been put back."); await loadMeals(); }
   };
   const exportData = ()=>{
     const payload={app:"Plate",version:2,exportedAt:new Date().toISOString(),profile,entries:meals};
@@ -514,16 +516,32 @@ function App({session}){
     setTimeout(()=>URL.revokeObjectURL(url),1000);
   };
   const importData = async (file)=>{
+    if(file.size > 10*1024*1024) throw new Error("Backup file is too large");
     const data=JSON.parse(await file.text());
+    if(!data || typeof data!=="object") throw new Error("Not a Plate backup");
     const incoming=Array.isArray(data.entries)?data.entries:[];
-    for(const e of incoming){
-      await supabase.from("meals").insert({ user_id:userId, ts:e.ts?new Date(e.ts).toISOString():new Date().toISOString(),
-        name:e.name||"Meal", description:e.description||"", items:e.items||[],
-        kcal:e.kcal||0, protein:e.protein||0, carbs:e.carbs||0, fat:e.fat||0 });
+    // Clean every field: a backup is just a file, and a hand-edited or
+    // corrupted one must not put bad values into the database.
+    const num=(v)=>Math.max(0,Math.min(100000,Math.round(Number(v)||0)));
+    const str=(v,n)=>String(v==null?"":v).slice(0,n);
+    const when=(v)=>{ const d=new Date(v); return isNaN(d) ? new Date().toISOString() : d.toISOString(); };
+    // Skip meals that are already in the log, so importing the same backup
+    // twice does not double everything.
+    const seen=new Set(meals.map(m=>m.ts+"|"+m.name));
+    const rows=incoming.filter(e=>e && typeof e==="object").map(e=>({ user_id:userId, ts:when(e.ts),
+        name:str(e.name||"Meal",120), description:str(e.description,600),
+        items:(Array.isArray(e.items)?e.items:[]).slice(0,50).map(it=>({ name:str(it&&it.name||"Item",120),
+          calories:num(it&&it.calories), protein:num(it&&(it.protein??it.protein_g)),
+          carbs:num(it&&(it.carbs??it.carbs_g)), fat:num(it&&(it.fat??it.fat_g)) })),
+        kcal:num(e.kcal), protein:num(e.protein), carbs:num(e.carbs), fat:num(e.fat) }))
+      .filter(r=>!seen.has(new Date(r.ts).getTime()+"|"+r.name));
+    for(let i=0;i<rows.length;i+=200){
+      const { error } = await supabase.from("meals").insert(rows.slice(i,i+200));
+      if(error) throw error;
     }
-    if(data.profile) await saveProfile(data.profile);
+    if(data.profile && typeof data.profile==="object" && !Array.isArray(data.profile)) await saveProfile(data.profile);
     await loadMeals();
-    return { count: incoming.length };
+    return { count: rows.length };
   };
 
   const todayKey = dayKey();
@@ -550,7 +568,7 @@ function App({session}){
         <${Tab} on=${tab==="profile"} onClick=${()=>setTab("profile")} icon=${I.User} label="You"/>
       </nav>
     </div>
-    ${adding && html`<${AddSheet} onClose=${()=>setAdding(false)} onSave=${async(e)=>{await addEntry(e); setAdding(false);}}/>`}
+    ${adding && html`<${AddSheet} onClose=${()=>setAdding(false)} onSave=${async(e)=>{ try{ await addEntry(e); setAdding(false); }catch(_){ /* sheet stays open so nothing is lost */ } }}/>`}
     ${detailId && html`<${Detail} row=${meals.find(m=>m.id===detailId)} onClose=${()=>setDetailId(null)} onDelete=${deleteEntry}/>`}
   </div>`;
 }
@@ -837,7 +855,7 @@ function ProfilePage({profile,onSave,onExport,onImport,email}){
   const set=(k,v)=>{ setF(s=>({...s,[k]:v})); setSaved(false); };
   const handleSave=async()=>{ await onSave(draft); setSaved(true); setTimeout(()=>setSaved(false),2000); };
   const handleImport=async(file)=>{ if(!file) return;
-    try{ const r=await onImport(file); setImportMsg("Restored — added "+r.count+" meals."); }
+    try{ const r=await onImport(file); setImportMsg(r.count ? "Restored — added "+r.count+(r.count===1?" meal.":" meals.") : "Nothing new to add — those meals are already in your log."); }
     catch{ setImportMsg("That file couldn't be read."); } setTimeout(()=>setImportMsg(""),4000); };
   const rateOptions = f.goal==="gain"?[0.25,0.5,1]:[0.5,1,1.5,2];
 

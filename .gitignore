@@ -1,0 +1,14 @@
+# Secrets - never commit
+.env
+.env.*
+!.env.example
+
+# Vercel / Node
+.vercel/
+node_modules/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+*.log

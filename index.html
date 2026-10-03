@@ -172,7 +172,12 @@ body{
 .items-head{display:flex;align-items:center;justify-content:space-between;margin-top:2px;}
 .items-head span{font-size:12.5px;font-weight:600;color:var(--ink-soft);}
 .add-item{background:none;border:none;color:var(--terracotta);font-weight:600;font-size:13px;cursor:pointer;display:flex;align-items:center;gap:3px;}
-.item-row{display:flex;gap:8px;align-items:center;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:8px 10px;}
+.item-row{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:8px 10px;}
+.item-main{display:flex;gap:8px;align-items:center;}
+.item-macros{display:flex;gap:8px;margin-top:6px;}
+.item-macros label{flex:1;display:flex;align-items:center;gap:4px;font-size:11px;color:var(--muted);min-width:0;}
+.item-macros input{width:100%;min-width:0;border:none;outline:none;background:var(--paper-2);border-radius:8px;padding:4px 6px;font-family:inherit;font-size:13px;text-align:right;color:var(--ink);}
+.item-macros span{white-space:nowrap;}
 .item-row input.iname{flex:1;border:none;outline:none;background:none;font-family:inherit;font-size:14px;color:var(--ink);min-width:0;}
 .item-row input.ical{width:64px;border:none;outline:none;background:var(--paper-2);border-radius:8px;padding:6px 8px;font-family:inherit;font-size:14px;text-align:right;color:var(--ink);}
 .item-row .unit{font-size:11px;color:var(--muted);}
@@ -454,6 +459,8 @@ function AuthScreen(){
   const [email,setEmail]=useState(""); const [pw,setPw]=useState("");
   const [err,setErr]=useState(""); const [busy,setBusy]=useState(false); const [msg,setMsg]=useState("");
   const submit=async()=>{
+    // Enter in the password box bypasses the disabled button.
+    if(busy || !email || !pw) return;
     setErr(""); setMsg(""); setBusy(true);
     try{
       if(mode==="signup"){
@@ -506,7 +513,12 @@ function App({session}){
   // Supabase returns at most 1,000 rows per request, so read in pages -
   // otherwise meals older than ~1,000 entries would silently drop out of the
   // log and out of backups.
+  // Each load is numbered, and only the newest one may write to the screen:
+  // two loads in flight can finish in either order, and an older one landing
+  // last would put back a meal that was just deleted.
+  const loadSeq = useRef(0);
   const loadMeals = async ()=>{
+    const mine = ++loadSeq.current;
     const PAGE=1000, all=[];
     for(let from=0; from<100*PAGE; from+=PAGE){      // cap: 100,000 meals
       const { data, error } = await supabase.from("meals").select("*")
@@ -515,7 +527,15 @@ function App({session}){
       all.push(...(data||[]));
       if(!data || data.length<PAGE) break;
     }
-    setMeals(all.map(rowToMeal));
+    if(mine===loadSeq.current) setMeals(all.map(rowToMeal));
+  };
+  // Realtime sends one event per row, so restoring a 500-meal backup fired 500
+  // full reloads of the log. Events are gathered for a moment and answered
+  // with one reload.
+  const reloadTimer = useRef(null);
+  const loadMealsSoon = ()=>{
+    clearTimeout(reloadTimer.current);
+    reloadTimer.current = setTimeout(loadMeals, 400);
   };
   useEffect(()=>{
     let on=true;
@@ -531,14 +551,14 @@ function App({session}){
     // phone stayed on the laptop. Every delete arrives instead, and only an
     // id that is in this user's list does anything.
     const ch = supabase.channel("meals-sync")
-      .on("postgres_changes",{event:"INSERT",schema:"public",table:"meals",filter:"user_id=eq."+userId}, loadMeals)
-      .on("postgres_changes",{event:"UPDATE",schema:"public",table:"meals",filter:"user_id=eq."+userId}, loadMeals)
+      .on("postgres_changes",{event:"INSERT",schema:"public",table:"meals",filter:"user_id=eq."+userId}, loadMealsSoon)
+      .on("postgres_changes",{event:"UPDATE",schema:"public",table:"meals",filter:"user_id=eq."+userId}, loadMealsSoon)
       .on("postgres_changes",{event:"DELETE",schema:"public",table:"meals"}, (p)=>{
         const id = p && p.old && p.old.id;
         if(id) setMeals(m=>m.some(x=>x.id===id) ? m.filter(x=>x.id!==id) : m);
       })
       .subscribe();
-    return ()=>{ on=false; supabase.removeChannel(ch); };
+    return ()=>{ on=false; clearTimeout(reloadTimer.current); supabase.removeChannel(ch); };
   },[userId]);
 
   const targets = useMemo(()=>computeTargets(profile),[profile]);
@@ -779,6 +799,22 @@ function AddSheet({onClose,onSave}){
 
   const totals=useMemo(()=>sumItems(items),[items]);
   const canEstimate = !!photo || note.trim().length>0;
+  // A second tap on "Confirm & save" while the first is still saving logged
+  // the meal twice.
+  const [saving,setSaving]=useState(false);
+  const save=async()=>{
+    if(saving) return;
+    setSaving(true);
+    try{
+      await onSave({name:name.trim()||"Meal", description:note.trim()||assumed,
+        items:items.filter(it=>it.name.trim()||it.calories||it.protein||it.carbs||it.fat), calories:totals.calories,
+        protein:totals.protein, carbs:totals.carbs, fat:totals.fat});
+    } finally { setSaving(false); }
+  };
+  // Tapping outside the sheet closes it - but not once there is something to
+  // lose (a photo, words, an estimate) or while an estimate is running.
+  const hasWork = !!photo || note.trim().length>0 || stage!=="pick";
+  const onBackdrop=()=>{ if(!hasWork) onClose(); };
 
   // Resize + store a chosen photo, without estimating yet (compose screen).
   const choosePhoto=async(file)=>{
@@ -820,7 +856,7 @@ function AddSheet({onClose,onSave}){
   const addItem=()=>setItems(arr=>[...arr,{name:"",calories:0,protein:0,carbs:0,fat:0}]);
   const delItem=(i)=>setItems(arr=>arr.filter((_,j)=>j!==i));
 
-  return html`<div class="overlay" onClick=${onClose}>
+  return html`<div class="overlay" onClick=${onBackdrop}>
     <div class="sheet" onClick=${e=>e.stopPropagation()}>
       <div class="sheet-handle"></div>
       <div class="sheet-head"><h3>${stage==="review"?"Check your meal":"Add a meal"}</h3>
@@ -889,18 +925,21 @@ function AddSheet({onClose,onSave}){
         <div class="items-head"><span>Parts of this meal & their calories</span>
           <button class="add-item" onClick=${addItem}><${I.Plus} size=${14}/> Add</button></div>
         ${items.map((it,i)=>html`<div class="item-row" key=${i}>
-          <input class="iname" value=${it.name} placeholder="Component" onChange=${e=>setItem(i,"name",e.target.value)}/>
-          <input class="ical" type="number" inputmode="numeric" value=${it.calories} onChange=${e=>setItem(i,"calories",e.target.value)}/>
-          <span class="unit">cal</span>
-          <button class="item-del" onClick=${()=>delItem(i)}><${I.X} size=${15}/></button>
+          <div class="item-main">
+            <input class="iname" value=${it.name} placeholder="Component" onChange=${e=>setItem(i,"name",e.target.value)}/>
+            <input class="ical" type="number" inputmode="numeric" aria-label="Calories" value=${it.calories} onChange=${e=>setItem(i,"calories",e.target.value)}/>
+            <span class="unit">cal</span>
+            <button class="item-del" aria-label="Remove" onClick=${()=>delItem(i)}><${I.X} size=${15}/></button>
+          </div>
+          <div class="item-macros">
+            ${[["protein","protein"],["carbs","carbs"],["fat","fat"]].map(([k,l])=>html`<label key=${k}>
+              <input type="number" inputmode="numeric" value=${it[k]} onChange=${e=>setItem(i,k,e.target.value)}/><span>g ${l}</span></label>`)}
+          </div>
         </div>`)}
         <div class="item-total"><span>Total</span><span><b>${totals.calories}</b> cal · ${totals.protein}p · ${totals.carbs}c · ${totals.fat}f</span></div>
 
-        <button class="save-btn" disabled=${!name.trim() || items.length===0}
-          onClick=${()=>onSave({name:name.trim()||"Meal", description:note.trim()||assumed,
-            items:items.filter(it=>it.name.trim()||it.calories), calories:totals.calories,
-            protein:totals.protein, carbs:totals.carbs, fat:totals.fat})}>
-          <${I.Check} size=${18}/> Confirm & save
+        <button class="save-btn" disabled=${saving || !name.trim() || items.length===0} onClick=${save}>
+          ${saving ? html`<${I.Loader} size=${18} className="spin"/>` : html`<${I.Check} size=${18}/>`} Confirm & save
         </button>
         <p class="save-note">Nothing is saved until you confirm. The photo is only used for the estimate and isn't stored — your log stays light and syncs instantly across devices.</p>
       </div>`}
@@ -990,7 +1029,8 @@ function ProfilePage({profile,onSave,onExport,onImport,email}){
           if(!opts.includes(Number(f.rate))) set("rate", v==="gain"?0.5:1); }}
         options=${GOALS.map(g=>({v:g.key,l:g.label}))}/>
       ${f.goal!=="maintain" && html`<div class="rate-block">
-        <div class="rate-label">${f.goal==="lose"?"Lose":"Gain"} ${f.rate} lb / week</div>
+        <div class="rate-label">${f.goal==="lose"?"Lose":"Gain"} ${f.rate} lb / week${
+          f.units==="metric" ? " (about "+(Math.round(lbToKg(Number(f.rate))*100)/100)+" kg)" : ""}</div>
         <div class="rate-opts">${rateOptions.map(r=>html`<button key=${r} class=${"rate-chip"+(Number(f.rate)===r?" on":"")} onClick=${()=>set("rate",r)}>${r}</button>`)}</div>
       </div>`}
     </${Card}>

@@ -134,13 +134,23 @@ module.exports = async function handler(req, res) {
       catch { return res.status(502).json({ error: "Could not parse estimate" }); }
     }
 
-    const items = Array.isArray(obj.items) ? obj.items.map(it => ({
-      name: String(it.name || "Item").slice(0, 120),
-      calories: Math.max(0, Math.round(Number(it.calories) || 0)),
-      protein_g: Math.max(0, Math.round(Number(it.protein_g) || 0)),
-      carbs_g: Math.max(0, Math.round(Number(it.carbs_g) || 0)),
-      fat_g: Math.max(0, Math.round(Number(it.fat_g) || 0)),
-    })) : [];
+    if (!obj || typeof obj !== "object" || Array.isArray(obj)) {
+      return res.status(502).json({ error: "Could not parse estimate" });
+    }
+    // Clamp everything the model says to what a meal can plausibly be (and to
+    // the database's own limits), so a garbled reply can't produce a meal
+    // that then fails to save.
+    const n = (v, hi) => Math.min(hi, Math.max(0, Math.round(Number(v) || 0)));
+    const items = Array.isArray(obj.items) ? obj.items
+      .filter((it) => it && typeof it === "object")
+      .slice(0, 20)
+      .map((it) => ({
+        name: String(it.name || "Item").slice(0, 120),
+        calories: n(it.calories, 5000),
+        protein_g: n(it.protein_g, 500),
+        carbs_g: n(it.carbs_g, 500),
+        fat_g: n(it.fat_g, 500),
+      })) : [];
 
     const sum = items.reduce((a, it) => ({
       calories: a.calories + it.calories, protein: a.protein + it.protein_g,

@@ -104,3 +104,16 @@ test("a retired model gives an actionable error", async () => {
   assert.equal(res.statusCode, 502);
   assert.match(res.payload.error, /ESTIMATE_MODEL/);
 });
+
+test("odd model replies are rejected or clamped, never crash", async () => {
+  for (const claude of [null, 42, "text", [1, 2]]) {
+    const { res } = await call({ body: { text: "x" }, claude, user: { id: "odd-" + String(claude), email: "me@example.com" } });
+    assert.equal(res.statusCode, 502, JSON.stringify(claude));
+  }
+  const many = { name: "M", items: [null, "x", ...Array.from({ length: 80 }, () => ({ name: "a", calories: 1e9, protein_g: -3 }))] };
+  const { res } = await call({ body: { text: "x" }, claude: many, user: { id: "odd-many", email: "me@example.com" } });
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.payload.items.length, 20);          // 20 × 5000 kcal stays inside the database limit
+  assert.equal(res.payload.items[0].calories, 5000);
+  assert.equal(res.payload.items[0].protein_g, 0);
+});

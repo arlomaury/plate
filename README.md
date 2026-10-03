@@ -2,6 +2,8 @@
 
 **Snap a photo of a meal (or just describe it) and get an itemized calorie and macro estimate that syncs across your phone and computer.**
 
+**Try it:** [plate-two-ruddy.vercel.app](https://plate-two-ruddy.vercel.app). Create an account to log meals and set goals. On this public copy, photo estimates are reserved for the owner, because each one costs API credits; deploy your own copy (below) to use them.
+
 ![Today view, the estimate editor, and the history log](docs/screenshots.png)
 
 <sub>Screenshots show demo data.</sub>

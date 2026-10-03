@@ -911,7 +911,12 @@ function ProfilePage({profile,onSave,onExport,onImport,email}){
     </${Card}>
 
     <${Card} title="Goal">
-      <${Seg} value=${f.goal} onChange=${v=>set("goal",v)} options=${GOALS.map(g=>({v:g.key,l:g.label}))}/>
+      <${Seg} value=${f.goal} onChange=${v=>{ set("goal",v);
+          // Each goal has its own rate choices (gain tops out at 1 lb/week);
+          // a rate carried over from the other goal must not survive the switch.
+          const opts = v==="gain"?[0.25,0.5,1]:[0.5,1,1.5,2];
+          if(!opts.includes(Number(f.rate))) set("rate", v==="gain"?0.5:1); }}
+        options=${GOALS.map(g=>({v:g.key,l:g.label}))}/>
       ${f.goal!=="maintain" && html`<div class="rate-block">
         <div class="rate-label">${f.goal==="lose"?"Lose":"Gain"} ${f.rate} lb / week</div>
         <div class="rate-opts">${rateOptions.map(r=>html`<button key=${r} class=${"rate-chip"+(Number(f.rate)===r?" on":"")} onClick=${()=>set("rate",r)}>${r}</button>`)}</div>

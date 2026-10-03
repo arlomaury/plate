@@ -472,9 +472,19 @@ function App({session}){
   const [adding,setAdding]=useState(false);
   const [detailId,setDetailId]=useState(null);
 
+  // Supabase returns at most 1,000 rows per request, so read in pages -
+  // otherwise meals older than ~1,000 entries would silently drop out of the
+  // log and out of backups.
   const loadMeals = async ()=>{
-    const { data } = await supabase.from("meals").select("*").order("ts",{ascending:false});
-    setMeals((data||[]).map(rowToMeal));
+    const PAGE=1000, all=[];
+    for(let from=0; from<100*PAGE; from+=PAGE){      // cap: 100,000 meals
+      const { data, error } = await supabase.from("meals").select("*")
+        .order("ts",{ascending:false}).order("id",{ascending:true}).range(from, from+PAGE-1);
+      if(error) return;          // keep what is on screen rather than blanking it
+      all.push(...(data||[]));
+      if(!data || data.length<PAGE) break;
+    }
+    setMeals(all.map(rowToMeal));
   };
   useEffect(()=>{
     let on=true;

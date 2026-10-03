@@ -494,10 +494,11 @@ function App({session}){
 
   const saveProfile = async (p)=>{
     setProfile(p);
-    await supabase.from("profiles").upsert({ user_id:userId, data:p, updated_at:new Date().toISOString() });
+    const { error } = await supabase.from("profiles").upsert({ user_id:userId, data:p, updated_at:new Date().toISOString() });
+    if(error){ alert("Couldn't save your goals - check your connection and try again."); throw error; }
   };
   const addEntry = async (entry)=>{
-    const row = { user_id:userId, ts:new Date().toISOString(), name:entry.name, description:entry.description||"",
+    const row = { user_id:userId, ts:new Date().toISOString(), name:String(entry.name||"Meal").slice(0,200), description:String(entry.description||"").slice(0,2000),
       items:entry.items||[], kcal:entry.calories, protein:entry.protein, carbs:entry.carbs, fat:entry.fat };
     const { data, error } = await supabase.from("meals").insert(row).select().single();
     if(error){ alert("Couldn't save that meal - check your connection and try again."); throw error; }
@@ -539,7 +540,7 @@ function App({session}){
       const { error } = await supabase.from("meals").insert(rows.slice(i,i+200));
       if(error) throw error;
     }
-    if(data.profile && typeof data.profile==="object" && !Array.isArray(data.profile)) await saveProfile(data.profile);
+    if(data.profile && typeof data.profile==="object" && !Array.isArray(data.profile)) await saveProfile(cleanProfile(data.profile));
     await loadMeals();
     return { count: rows.length };
   };
@@ -571,6 +572,16 @@ function App({session}){
     ${adding && html`<${AddSheet} onClose=${()=>setAdding(false)} onSave=${async(e)=>{ try{ await addEntry(e); setAdding(false); }catch(_){ /* sheet stays open so nothing is lost */ } }}/>`}
     ${detailId && html`<${Detail} row=${meals.find(m=>m.id===detailId)} onClose=${()=>setDetailId(null)} onDelete=${deleteEntry}/>`}
   </div>`;
+}
+// Only the fields the app uses, each within a sane range - a restored backup
+// is just a file and must not put arbitrary data into the profile.
+function cleanProfile(p){
+  const n=(v,lo,hi,d)=>{ const x=Number(v); return isFinite(x)?Math.min(hi,Math.max(lo,x)):d; };
+  const pick=(v,opts,d)=>opts.includes(v)?v:d;
+  return { units:pick(p.units,["imperial","metric"],"imperial"), sex:pick(p.sex,["male","female"],"female"),
+    age:Math.round(n(p.age,0,120,0)), heightCm:n(p.heightCm,0,272,0), weightKg:n(p.weightKg,0,635,0),
+    activity:pick(p.activity,ACTIVITY.map(a=>a.key),"light"), goal:pick(p.goal,GOALS.map(g=>g.key),"maintain"),
+    rate:n(p.rate,0,2,1) };
 }
 function rowToMeal(r){
   return { id:r.id, ts:new Date(r.ts).getTime(), dateKey:dayKey(r.ts), name:r.name, description:r.description||"",
@@ -853,7 +864,7 @@ function ProfilePage({profile,onSave,onExport,onImport,email}){
   },[f]);
   const preview=useMemo(()=>computeTargets(draft),[draft]);
   const set=(k,v)=>{ setF(s=>({...s,[k]:v})); setSaved(false); };
-  const handleSave=async()=>{ await onSave(draft); setSaved(true); setTimeout(()=>setSaved(false),2000); };
+  const handleSave=async()=>{ try{ await onSave(draft); setSaved(true); setTimeout(()=>setSaved(false),2000); }catch(_){ /* alert already shown */ } };
   const handleImport=async(file)=>{ if(!file) return;
     try{ const r=await onImport(file); setImportMsg(r.count ? "Restored — added "+r.count+(r.count===1?" meal.":" meals.") : "Nothing new to add — those meals are already in your log."); }
     catch{ setImportMsg("That file couldn't be read."); } setTimeout(()=>setImportMsg(""),4000); };

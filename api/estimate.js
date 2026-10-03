@@ -15,6 +15,21 @@ const ALLOWED_MEDIA = new Set(["image/jpeg", "image/png", "image/webp", "image/g
 const MAX_IMAGE_B64 = 4 * 1024 * 1024;   // ~3MB image; the app sends ~100KB
 const MAX_TEXT = 1000;                    // characters of meal description
 
+// Per-user rate limit.  Serverless instances don't share memory, so this is a
+// brake on runaway loops and abuse from one account rather than a hard quota;
+// ALLOWED_EMAILS plus disabled sign-ups is the real fence.
+const RATE_WINDOW_MS = 10 * 60 * 1000;
+const RATE_MAX = Number(process.env.ESTIMATES_PER_10_MIN) || 30;
+const recent = new Map();                 // user id -> [timestamps]
+function rateLimited(userId, now = Date.now()) {
+  const list = (recent.get(userId) || []).filter((t) => now - t < RATE_WINDOW_MS);
+  if (list.length >= RATE_MAX) { recent.set(userId, list); return true; }
+  list.push(now);
+  recent.set(userId, list);
+  if (recent.size > 5000) recent.clear(); // bound memory on a long-lived instance
+  return false;
+}
+
 const PROMPT = `You are a careful nutrition estimator. You may be given a food photo, a written description of a meal, or both. Break the meal into its components and estimate calories and macros for each.
 Respond with ONLY a raw JSON object (no markdown, no backticks, no extra text) with exactly these keys:
 {
@@ -27,7 +42,7 @@ Respond with ONLY a raw JSON object (no markdown, no backticks, no extra text) w
 }
 Each entry in "items" is one part of the meal (e.g. the chicken, the rice, the dressing) with its own calories and macros for the portion shown or described. Include every component you can identify. When both a photo and a description are given, treat the description as the person's correction or clarification and prefer it where they conflict. If you have neither a clear photo nor a usable description, return an empty "items" array and explain in "description".`;
 
-module.exports = async (req, res) => {
+module.exports = async function handler(req, res) {
   setCors(req, res);
   if (req.method === "OPTIONS") return res.status(204).end();
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
@@ -57,6 +72,9 @@ module.exports = async (req, res) => {
       .split(",").map((e) => e.trim().toLowerCase()).filter(Boolean);
     if (allowed.length && !allowed.includes(String(user.email || "").toLowerCase())) {
       return res.status(403).json({ error: "This account is not allowed to run estimates" });
+    }
+    if (rateLimited(String(user.id || user.email || token.slice(-16)))) {
+      return res.status(429).json({ error: "Too many estimates - wait a few minutes and try again" });
     }
 
     let body;
@@ -98,6 +116,8 @@ module.exports = async (req, res) => {
       // the browser, where it could reveal account or billing state.
       console.error("Anthropic error", ar.status, (await ar.text().catch(() => "")).slice(0, 500));
       const msg = ar.status === 429 ? "Too many estimates right now - try again in a minute"
+        : ar.status === 404 ? "The AI model '" + model + "' is not available - set ESTIMATE_MODEL in Vercel to a current Claude model"
+        : ar.status === 401 ? "The server's Anthropic API key was rejected - check ANTHROPIC_API_KEY in Vercel"
         : "The estimate service is unavailable (" + ar.status + ")";
       return res.status(502).json({ error: msg });
     }
@@ -165,3 +185,5 @@ function readJson(req) {
     req.on("error", reject);
   });
 }
+
+module.exports._rateLimited = rateLimited;   // exposed for tests

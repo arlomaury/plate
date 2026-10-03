@@ -1,6 +1,6 @@
 // Minimal service worker — makes Plate installable and loads the shell fast.
 // Network-first so you always get the latest app; falls back to cache offline.
-const CACHE = "plate-v2";
+const CACHE = "plate-v3";
 const SHELL = ["/", "/index.html", "/manifest.webmanifest", "/icon.svg"];
 
 self.addEventListener("install", (e) => {

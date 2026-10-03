@@ -26,6 +26,8 @@ React 18 + htm (no build step) · Supabase (Postgres, Auth, Realtime, RLS) · Ve
 - Input is validated (image type, size, and description length), and upstream errors are logged server-side rather than returned to the browser.
 - No wildcard CORS. Security headers (HSTS, nosniff, frame denial, permissions policy) are set in `vercel.json`.
 - The Supabase **anon key** in `index.html` is designed to be public. Data access is enforced by the RLS policies in `schema.sql`.
+- The database enforces size and range limits on every row (`schema.sql`). For a database created before these were added, run `schema_limits.sql` once.
+- A per-user rate limit (default 30 estimates per 10 minutes, `ESTIMATES_PER_10_MIN`) stops runaway loops.
 
 ## Tests
 
@@ -46,7 +48,8 @@ Anthropic API key (a few cents of usage per day for personal use).
 ```
 index.html              The whole app (no build step)
 api/estimate.js         Tiny server function that holds your API key + runs estimates
-schema.sql              Database tables to paste into Supabase
+schema.sql              Database tables to paste into Supabase (safe to re-run)
+schema_limits.sql       Adds size limits to a database made before they existed
 manifest.webmanifest    Makes it installable on your phone
 sw.js  icon.svg         PWA support
 vercel.json  .env.example

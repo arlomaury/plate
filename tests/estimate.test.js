@@ -78,3 +78,29 @@ test("cleans up a sloppy model reply", async () => {
   assert.equal(res.payload.items[0].protein_g, 7);
   assert.equal(res.payload.confidence, "medium");
 });
+
+test("rate limit trips after the per-user budget and resets after the window", () => {
+  const rl = handler._rateLimited;
+  const t0 = 1_000_000;
+  for (let i = 0; i < 30; i++) assert.equal(rl("u-rate", t0 + i), false);
+  assert.equal(rl("u-rate", t0 + 31), true);
+  assert.equal(rl("u-other", t0 + 31), false);
+  assert.equal(rl("u-rate", t0 + 10 * 60 * 1000 + 100), false);
+});
+
+test("a retired model gives an actionable error", async () => {
+  const saved = global.fetch;
+  const { res } = await (async () => {
+    Object.assign(process.env, ENV);
+    global.fetch = async (url) => url.endsWith("/auth/v1/user")
+      ? { ok: true, json: async () => ({ id: "u404", email: "me@example.com" }) }
+      : { ok: false, status: 404, text: async () => "model not found" };
+    const r = { headers: {}, setHeader(k, v) { this.headers[k] = v; }, status(c) { this.statusCode = c; return this; },
+      json(o) { this.payload = o; return this; }, end() { return this; } };
+    await handler({ method: "POST", headers: { authorization: "Bearer good" }, body: { text: "x" } }, r);
+    return { res: r };
+  })();
+  global.fetch = saved;
+  assert.equal(res.statusCode, 502);
+  assert.match(res.payload.error, /ESTIMATE_MODEL/);
+});

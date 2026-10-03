@@ -316,6 +316,11 @@ const ACTIVITY = [
 const GOALS = [{key:"lose",label:"Lose weight"},{key:"maintain",label:"Maintain"},{key:"gain",label:"Build / gain"}];
 const LB_PER_KG = 2.2046226218;
 const kgToLb = (kg)=>kg*LB_PER_KG, lbToKg = (lb)=>lb/LB_PER_KG;
+// Height in cm -> [feet, inches], rounding the total inches first so it can
+// never read "5 ft 12 in".
+const cmToFtIn = (cm)=>{ const t=Math.round(cm/2.54); return [Math.floor(t/12), t%12]; };
+// One decimal, so switching units back and forth doesn't drift the weight.
+const r1 = (x)=>String(Math.round(x*10)/10);
 
 // Cut text to at most n characters without splitting an emoji in half: a lone
 // half of a surrogate pair is invalid JSON to Postgres and the save fails.
@@ -401,7 +406,7 @@ async function estimate(base64, mediaType, text){
   if(!r.ok){
     const t=await r.text().catch(()=> "");
     let msg=""; try{ msg=JSON.parse(t).error||""; }catch(_){}
-    if(r.status===403) msg="Photo estimates aren't turned on for this account. You can still add meals by hand.";
+    if(r.status===403) msg="Estimates aren't turned on for this account (this copy keeps them for its owner). You can still add meals by hand.";
     else if(r.status===429) msg="Too many estimates in a short time - wait a few minutes and try again.";
     throw new Error(msg ? msg : "Couldn't get an estimate ("+r.status+") - try again.");
   }
@@ -903,11 +908,10 @@ function ProfilePage({profile,onSave,onExport,onImport,email}){
 
   useEffect(()=>{
     if(!profile) return;
-    const ft=Math.floor(profile.heightCm/30.48);
-    const inch=Math.round((profile.heightCm/2.54)-ft*12);
+    const [ft,inch]=cmToFtIn(profile.heightCm);
     setF({units:profile.units||"imperial",sex:profile.sex||"female",age:String(profile.age||""),
       ft:String(ft||""),in:String(inch||""),cm:String(Math.round(profile.heightCm)||""),
-      lb:String(Math.round(kgToLb(profile.weightKg))||""),kg:String(Math.round(profile.weightKg)||""),
+      lb:profile.weightKg?r1(kgToLb(profile.weightKg)):"",kg:profile.weightKg?r1(profile.weightKg):"",
       activity:profile.activity||"light",goal:profile.goal||"maintain",rate:profile.rate!=null?profile.rate:1});
   },[profile]);
 
@@ -945,10 +949,10 @@ function ProfilePage({profile,onSave,onExport,onImport,email}){
     <${Card} title="Measurements">
       <${Seg} value=${f.units} onChange=${v=>{ if(v===f.units) return;
           // Carry the numbers across instead of switching to empty fields.
-          const h=draft.heightCm, w=draft.weightKg, ft=Math.floor(h/30.48), inch=Math.round(h/2.54-ft*12);
+          const h=draft.heightCm, w=draft.weightKg, [ft,inch]=cmToFtIn(h);
           setF(s=>({...s, units:v,
             ft:h?String(ft):s.ft, in:h?String(inch):s.in, cm:h?String(Math.round(h)):s.cm,
-            lb:w?String(Math.round(kgToLb(w))):s.lb, kg:w?String(Math.round(w)):s.kg }));
+            lb:w?r1(kgToLb(w)):s.lb, kg:w?r1(w):s.kg }));
           setSaved(false); }} options=${[{v:"imperial",l:"lb / ft"},{v:"metric",l:"kg / cm"}]}/>
       <${Seg} value=${f.sex} onChange=${v=>set("sex",v)} options=${[{v:"female",l:"Female"},{v:"male",l:"Male"}]}/>
       <label class="fld"><span>Age</span><input type="number" inputmode="numeric" value=${f.age} placeholder="years" onChange=${e=>set("age",e.target.value)}/></label>

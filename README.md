@@ -2,7 +2,7 @@
 
 **Snap a photo of a meal (or just describe it) and get an itemized calorie and macro estimate that syncs across your phone and computer.**
 
-**Try it:** [plate-two-ruddy.vercel.app](https://plate-two-ruddy.vercel.app). Create an account to log meals and set goals. On this public copy, photo estimates are reserved for the owner, because each one costs API credits; deploy your own copy (below) to use them.
+**Try it:** [plate-two-ruddy.vercel.app](https://plate-two-ruddy.vercel.app). Create an account to log meals and set goals. On this public copy, AI estimates (from a photo or a description) are reserved for the owner, because each one costs API credits. You can still log meals by hand; deploy your own copy (below) to get estimates.
 
 ![Today view, the estimate editor, and the history log](docs/screenshots.png)
 
@@ -139,7 +139,7 @@ Then choose who else can use it:
 
 - **Let others try it (sign-ups on).** With `ALLOWED_EMAILS` set to your email,
   anyone can create an account and log meals by hand, and each person sees only
-  their own data. Only you can run photo estimates, which are what cost money;
+  their own data. Only you can run AI estimates (photo or text), which are what cost money;
   anyone else who tries is told estimates aren't turned on for their account.
 - **Just you (sign-ups off).** Go to Supabase → **Authentication → Sign In /
   Providers** and turn **Allow new users to sign up** OFF.

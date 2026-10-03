@@ -63,7 +63,8 @@ module.exports = async function handler(req, res) {
       headers: { Authorization: "Bearer " + token, apikey: sbKey },
     });
     if (!u.ok) return res.status(401).json({ error: "Invalid session" });
-    const user = await u.json().catch(() => ({}));
+    const user = await u.json().catch(() => null);
+    if (!user || typeof user !== "object" || !user.id) return res.status(401).json({ error: "Invalid session" });
 
     // Optional allowlist: signing up is open by default in Supabase, so this
     // is what stops a stranger who finds your URL from creating an account
@@ -73,7 +74,7 @@ module.exports = async function handler(req, res) {
     if (allowed.length && !allowed.includes(String(user.email || "").toLowerCase())) {
       return res.status(403).json({ error: "This account is not allowed to run estimates" });
     }
-    if (rateLimited(String(user.id || user.email || token.slice(-16)))) {
+    if (rateLimited(String(user.id))) {
       return res.status(429).json({ error: "Too many estimates - wait a few minutes and try again" });
     }
 

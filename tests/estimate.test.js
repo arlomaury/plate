@@ -7,7 +7,7 @@ const handler = require("../api/estimate.js");
 
 const ENV = { ANTHROPIC_API_KEY: "test-key", SUPABASE_URL: "https://sb.test", SUPABASE_ANON_KEY: "anon" };
 
-function call({ method = "POST", headers = {}, body, env = ENV, user = { email: "me@example.com" },
+function call({ method = "POST", headers = {}, body, env = ENV, user = { id: "u-default", email: "me@example.com" },
                 claude = { name: "Toast", items: [{ name: "Bread", calories: 80.6, protein_g: 3, carbs_g: 15, fat_g: 1 }] } } = {}) {
   const saved = { ...process.env };
   for (const k of ["ANTHROPIC_API_KEY", "SUPABASE_URL", "SUPABASE_ANON_KEY", "ALLOWED_EMAILS", "ALLOWED_ORIGIN"]) delete process.env[k];
@@ -48,10 +48,10 @@ test("rejects missing and invalid sessions", async () => {
 
 test("ALLOWED_EMAILS blocks other accounts before spending credits", async () => {
   const { res, calls } = await call({ env: { ...ENV, ALLOWED_EMAILS: "owner@example.com" },
-                                      user: { email: "stranger@example.com" }, body: { text: "x" } });
+                                      user: { id: "s1", email: "stranger@example.com" }, body: { text: "x" } });
   assert.equal(res.statusCode, 403);
   assert.ok(!calls.some((u) => u.includes("anthropic")));
-  const ok = await call({ env: { ...ENV, ALLOWED_EMAILS: "Owner@Example.com" }, user: { email: "owner@example.com" }, body: { text: "x" } });
+  const ok = await call({ env: { ...ENV, ALLOWED_EMAILS: "Owner@Example.com" }, user: { id: "o1", email: "owner@example.com" }, body: { text: "x" } });
   assert.equal(ok.res.statusCode, 200);
 });
 
@@ -116,4 +116,12 @@ test("odd model replies are rejected or clamped, never crash", async () => {
   assert.equal(res.payload.items.length, 20);          // 20 × 5000 kcal stays inside the database limit
   assert.equal(res.payload.items[0].calories, 5000);
   assert.equal(res.payload.items[0].protein_g, 0);
+});
+
+test("a malformed user record from Supabase is treated as not signed in", async () => {
+  for (const user of [null, {}, { email: "a@b.c" }]) {
+    const { res, calls } = await call({ body: { text: "x" }, user });
+    assert.equal(res.statusCode, 401);
+    assert.ok(!calls.some((u) => u.includes("anthropic")));
+  }
 });

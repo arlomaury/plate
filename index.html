@@ -317,6 +317,18 @@ const GOALS = [{key:"lose",label:"Lose weight"},{key:"maintain",label:"Maintain"
 const LB_PER_KG = 2.2046226218;
 const kgToLb = (kg)=>kg*LB_PER_KG, lbToKg = (lb)=>lb/LB_PER_KG;
 
+// Cut text to at most n characters without splitting an emoji in half: a lone
+// half of a surrogate pair is invalid JSON to Postgres and the save fails.
+const clip=(v,n)=>{ const s=String(v==null?"":v); return s.length<=n ? s : Array.from(s).slice(0,n).join(""); };
+const LIMITS={ kcal:100000, macro:10000 };
+// What to tell someone when the database refuses a save. A CHECK violation is
+// the data, not the connection, so it must not be blamed on the network.
+function saveError(error, what){
+  if(error && error.code==="23514")
+    return "Couldn't save "+what+" - a number is out of range (calories up to 100,000, protein/carbs/fat up to 10,000 g) or a name is too long.";
+  return "Couldn't save "+what+" - check your connection and try again.";
+}
+
 function computeTargets(p){
   if(!p || !p.weightKg || !p.heightCm || !p.age)
     return { bmr:0, tdee:0, calories:2000, protein:120, carbs:220, fat:60, valid:false };
@@ -326,21 +338,27 @@ function computeTargets(p){
   let cals = tdee;
   if(p.goal==="lose") cals = tdee - (p.rate||1)*500;
   if(p.goal==="gain") cals = tdee + (p.rate||0.5)*500;
-  cals = Math.max(cals, p.sex==="male"?1500:1200);
+  const floor = p.sex==="male"?1500:1200;
+  const floored = cals < floor;
+  cals = Math.max(cals, floor);
   const gPerKg = p.goal==="lose"?2.0:p.goal==="gain"?1.8:1.6;
   // Grams per kg of body weight, capped at 35% of calories: at high body
   // weights the per-kg figure alone can exceed the whole calorie budget.
   const protein = Math.round(Math.min(p.weightKg*gPerKg, cals*0.35/4));
   const fat = Math.round((cals*0.27)/9);
   const carbs = Math.max(0, Math.round((cals - protein*4 - fat*9)/4));
-  return { bmr:Math.round(bmr), tdee:Math.round(tdee), calories:Math.round(cals/10)*10, protein, carbs, fat, valid:true };
+  return { bmr:Math.round(bmr), tdee:Math.round(tdee), calories:Math.round(cals/10)*10, protein, carbs, fat, valid:true,
+    floored, floor };
 }
 
 /* --------------------------- dates ----------------------------- */
 const dayKey = (d)=>{ const x=d?new Date(d):new Date();
   return x.getFullYear()+"-"+String(x.getMonth()+1).padStart(2,"0")+"-"+String(x.getDate()).padStart(2,"0"); };
 const prettyDate = (key)=>{ const [y,m,d]=key.split("-").map(Number); const date=new Date(y,m-1,d);
-  const t=dayKey(), ye=dayKey(new Date(Date.now()-86400000));
+  // Calendar arithmetic, not "now minus 24 hours": across a daylight-saving
+  // change a day is 23 or 25 hours long.
+  const yd=new Date(); yd.setDate(yd.getDate()-1);
+  const t=dayKey(), ye=dayKey(yd);
   if(key===t) return "Today"; if(key===ye) return "Yesterday";
   return date.toLocaleDateString(undefined,{weekday:"long",month:"long",day:"numeric"}); };
 const prettyTime = (ts)=>new Date(ts).toLocaleTimeString(undefined,{hour:"numeric",minute:"2-digit"});
@@ -380,7 +398,13 @@ async function estimate(base64, mediaType, text){
     headers:{ "Content-Type":"application/json", "Authorization":"Bearer "+token },
     body: JSON.stringify(body),
   });
-  if(!r.ok){ const t=await r.text().catch(()=> ""); throw new Error("Estimate failed ("+r.status+") "+t.slice(0,120)); }
+  if(!r.ok){
+    const t=await r.text().catch(()=> "");
+    let msg=""; try{ msg=JSON.parse(t).error||""; }catch(_){}
+    if(r.status===403) msg="Photo estimates aren't turned on for this account. You can still add meals by hand.";
+    else if(r.status===429) msg="Too many estimates in a short time - wait a few minutes and try again.";
+    throw new Error(msg ? msg : "Couldn't get an estimate ("+r.status+") - try again.");
+  }
   return await r.json();
 }
 function sumItems(items){
@@ -507,13 +531,13 @@ function App({session}){
   const saveProfile = async (p)=>{
     setProfile(p);
     const { error } = await supabase.from("profiles").upsert({ user_id:userId, data:p, updated_at:new Date().toISOString() });
-    if(error){ alert("Couldn't save your goals - check your connection and try again."); throw error; }
+    if(error){ alert(saveError(error,"your goals")); throw error; }
   };
   const addEntry = async (entry)=>{
-    const row = { user_id:userId, ts:new Date().toISOString(), name:String(entry.name||"Meal").slice(0,200), description:String(entry.description||"").slice(0,2000),
+    const row = { user_id:userId, ts:new Date().toISOString(), name:clip(entry.name||"Meal",200), description:clip(entry.description,2000),
       items:entry.items||[], kcal:entry.calories, protein:entry.protein, carbs:entry.carbs, fat:entry.fat };
     const { data, error } = await supabase.from("meals").insert(row).select().single();
-    if(error){ alert("Couldn't save that meal - check your connection and try again."); throw error; }
+    if(error){ alert(saveError(error,"that meal")); throw error; }
     if(data) setMeals(m=>[rowToMeal(data),...m]);
   };
   const deleteEntry = async (id)=>{
@@ -535,28 +559,47 @@ function App({session}){
     const incoming=Array.isArray(data.entries)?data.entries:[];
     // Clean every field: a backup is just a file, and a hand-edited or
     // corrupted one must not put bad values into the database.
-    const num=(v)=>Math.max(0,Math.min(100000,Math.round(Number(v)||0)));
-    const str=(v,n)=>String(v==null?"":v).slice(0,n);
+    const num=(v,hi=LIMITS.macro)=>Math.max(0,Math.min(hi,Math.round(Number(v)||0)));
+    const str=clip;
     const when=(v)=>{ const d=new Date(v); return isNaN(d) ? new Date().toISOString() : d.toISOString(); };
     // Skip meals that are already in the log, so importing the same backup
     // twice does not double everything.
     const seen=new Set(meals.map(m=>m.ts+"|"+m.name));
     const rows=incoming.filter(e=>e && typeof e==="object").map(e=>({ user_id:userId, ts:when(e.ts),
-        name:str(e.name||"Meal",120), description:str(e.description,600),
+        // The same limits the app saves with, so a restored meal comes back
+        // whole and is recognised as a duplicate of the one already logged.
+        name:str(e.name||"Meal",200), description:str(e.description,2000),
         items:(Array.isArray(e.items)?e.items:[]).slice(0,50).map(it=>({ name:str(it&&it.name||"Item",120),
-          calories:num(it&&it.calories), protein:num(it&&(it.protein??it.protein_g)),
+          calories:num(it&&it.calories,LIMITS.kcal), protein:num(it&&(it.protein??it.protein_g)),
           carbs:num(it&&(it.carbs??it.carbs_g)), fat:num(it&&(it.fat??it.fat_g)) })),
-        kcal:num(e.kcal), protein:num(e.protein), carbs:num(e.carbs), fat:num(e.fat) }))
+        kcal:num(e.kcal,LIMITS.kcal), protein:num(e.protein), carbs:num(e.carbs), fat:num(e.fat) }))
       .filter(r=>!seen.has(new Date(r.ts).getTime()+"|"+r.name));
+    let added=0;
     for(let i=0;i<rows.length;i+=200){
-      const { error } = await supabase.from("meals").insert(rows.slice(i,i+200));
-      if(error) throw error;
+      const batch=rows.slice(i,i+200);
+      const { error } = await supabase.from("meals").insert(batch);
+      if(error){
+        await loadMeals();
+        throw new Error((added ? "Added "+added+" meals, then stopped: " : "")+saveError(error,"the backup"));
+      }
+      added+=batch.length;
     }
     if(data.profile && typeof data.profile==="object" && !Array.isArray(data.profile)) await saveProfile(cleanProfile(data.profile));
     await loadMeals();
     return { count: rows.length };
   };
 
+  // "Today" must roll over at midnight even if the app is left open, and be
+  // re-checked when it comes back from the background.
+  const [,setClock]=useState(0);
+  useEffect(()=>{
+    const tick=()=>setClock(c=>c+1);
+    const n=new Date(), next=new Date(n.getFullYear(),n.getMonth(),n.getDate()+1,0,0,5);
+    const t=setTimeout(tick, next-n);
+    const vis=()=>{ if(document.visibilityState==="visible") tick(); };
+    document.addEventListener("visibilitychange",vis);
+    return ()=>{ clearTimeout(t); document.removeEventListener("visibilitychange",vis); };
+  });
   const todayKey = dayKey();
   const todays = meals.filter(m=>m.dateKey===todayKey);
 
@@ -876,10 +919,17 @@ function ProfilePage({profile,onSave,onExport,onImport,email}){
   },[f]);
   const preview=useMemo(()=>computeTargets(draft),[draft]);
   const set=(k,v)=>{ setF(s=>({...s,[k]:v})); setSaved(false); };
-  const handleSave=async()=>{ try{ await onSave(draft); setSaved(true); setTimeout(()=>setSaved(false),2000); }catch(_){ /* alert already shown */ } };
+  const [formErr,setFormErr]=useState("");
+  const handleSave=async()=>{
+    // Saving blanks would hide the setup prompt for good while quietly using
+    // generic targets - so the basics are required.
+    if(!(draft.age>0 && draft.heightCm>0 && draft.weightKg>0)){ setFormErr("Enter your age, height and weight first."); return; }
+    setFormErr("");
+    try{ await onSave(draft); setSaved(true); setTimeout(()=>setSaved(false),2000); }catch(_){ /* alert already shown */ } };
   const handleImport=async(file)=>{ if(!file) return;
     try{ const r=await onImport(file); setImportMsg(r.count ? "Restored — added "+r.count+(r.count===1?" meal.":" meals.") : "Nothing new to add — those meals are already in your log."); }
-    catch{ setImportMsg("That file couldn't be read."); } setTimeout(()=>setImportMsg(""),4000); };
+    catch(e){ setImportMsg(e instanceof SyntaxError || !e.message ? "That file couldn't be read." : e.message); }
+    setTimeout(()=>setImportMsg(""),6000); };
   const rateOptions = f.goal==="gain"?[0.25,0.5,1]:[0.5,1,1.5,2];
 
   return html`<div class="page fade-in">
@@ -888,10 +938,18 @@ function ProfilePage({profile,onSave,onExport,onImport,email}){
       <div class="tp-grid"><div><b>${preview.protein}g</b><span>protein</span></div>
         <div><b>${preview.carbs}g</b><span>carbs</span></div><div><b>${preview.fat}g</b><span>fat</span></div></div>
       ${preview.valid && html`<div class="tp-foot">BMR ${preview.bmr} · Maintenance ${preview.tdee} cal</div>`}
+      ${preview.valid && preview.floored && html`<div class="tp-foot">Held at the ${preview.floor.toLocaleString()} cal minimum${
+        draft.goal==="lose" && preview.calories>=preview.tdee ? " - that is at or above your maintenance, so you won't lose weight at this target. Talk to a doctor or dietitian about a safe plan." : "."}</div>`}
     </div>
 
     <${Card} title="Measurements">
-      <${Seg} value=${f.units} onChange=${v=>set("units",v)} options=${[{v:"imperial",l:"lb / ft"},{v:"metric",l:"kg / cm"}]}/>
+      <${Seg} value=${f.units} onChange=${v=>{ if(v===f.units) return;
+          // Carry the numbers across instead of switching to empty fields.
+          const h=draft.heightCm, w=draft.weightKg, ft=Math.floor(h/30.48), inch=Math.round(h/2.54-ft*12);
+          setF(s=>({...s, units:v,
+            ft:h?String(ft):s.ft, in:h?String(inch):s.in, cm:h?String(Math.round(h)):s.cm,
+            lb:w?String(Math.round(kgToLb(w))):s.lb, kg:w?String(Math.round(w)):s.kg }));
+          setSaved(false); }} options=${[{v:"imperial",l:"lb / ft"},{v:"metric",l:"kg / cm"}]}/>
       <${Seg} value=${f.sex} onChange=${v=>set("sex",v)} options=${[{v:"female",l:"Female"},{v:"male",l:"Male"}]}/>
       <label class="fld"><span>Age</span><input type="number" inputmode="numeric" value=${f.age} placeholder="years" onChange=${e=>set("age",e.target.value)}/></label>
       ${f.units==="imperial"
@@ -923,6 +981,7 @@ function ProfilePage({profile,onSave,onExport,onImport,email}){
       </div>`}
     </${Card}>
 
+    ${formErr && html`<p class="sync-hint" role="alert">${formErr}</p>`}
     <button class=${"save-btn"+(saved?" saved":"")} onClick=${handleSave}>
       ${saved?html`<${I.Check} size=${18}/> Saved`:html`<${I.Pencil} size=${16}/> Save goals`}</button>
 

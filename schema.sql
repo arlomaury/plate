@@ -62,3 +62,8 @@ begin
     alter publication supabase_realtime add table public.meals;
   end if;
 end $$;
+
+-- Deletes carry the whole old row, so a delete on one device reaches the
+-- others: Supabase can only match a filtered (user_id=eq...) DELETE event when
+-- the table's replica identity is full.
+alter table public.meals replica identity full;

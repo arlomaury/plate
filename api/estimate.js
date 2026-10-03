@@ -142,11 +142,14 @@ module.exports = async function handler(req, res) {
     // the database's own limits), so a garbled reply can't produce a meal
     // that then fails to save.
     const n = (v, hi) => Math.min(hi, Math.max(0, Math.round(Number(v) || 0)));
+    // Cut by characters, not UTF-16 units, so an emoji at the limit is not
+    // split in half (Postgres rejects the lone half and the meal won't save).
+    const clip = (v, max) => Array.from(String(v)).slice(0, max).join("");
     const items = Array.isArray(obj.items) ? obj.items
       .filter((it) => it && typeof it === "object")
       .slice(0, 20)
       .map((it) => ({
-        name: String(it.name || "Item").slice(0, 120),
+        name: clip(it.name || "Item", 120),
         calories: n(it.calories, 5000),
         protein_g: n(it.protein_g, 500),
         carbs_g: n(it.carbs_g, 500),
@@ -159,8 +162,8 @@ module.exports = async function handler(req, res) {
     }), { calories: 0, protein: 0, carbs: 0, fat: 0 });
 
     return res.status(200).json({
-      name: String(obj.name || "Meal").slice(0, 120),
-      description: String(obj.description || "").slice(0, 600),
+      name: clip(obj.name || "Meal", 120),
+      description: clip(obj.description || "", 600),
       items,
       calories: sum.calories, protein_g: sum.protein, carbs_g: sum.carbs, fat_g: sum.fat,
       confidence: ["low", "medium", "high"].includes(obj.confidence) ? obj.confidence : "medium",

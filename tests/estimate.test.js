@@ -125,3 +125,15 @@ test("a malformed user record from Supabase is treated as not signed in", async 
     assert.ok(!calls.some((u) => u.includes("anthropic")));
   }
 });
+
+test("long names are cut by character, never through the middle of an emoji", async () => {
+  const name = "a".repeat(119) + "🍕🍕";
+  const { res } = await call({ body: { text: "x" },
+    claude: { name, description: "b".repeat(599) + "🍕", items: [{ name, calories: 1 }] } });
+  for (const s of [res.payload.name, res.payload.items[0].name, res.payload.description]) {
+    assert.ok(!/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(^|[^\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(s), "lone surrogate");
+    assert.doesNotThrow(() => encodeURIComponent(s));
+  }
+  assert.equal(Array.from(res.payload.name).length, 120);
+  assert.ok(res.payload.name.endsWith("🍕"));
+});

@@ -22,7 +22,7 @@ React 18 + htm (no build step) · Supabase (Postgres, Auth, Realtime, RLS) · Ve
 ## Security
 
 - The estimate endpoint **requires a signed-in Supabase user** and refuses to run if it isn't configured, so nobody can spend your API credits anonymously.
-- `ALLOWED_EMAILS` limits estimates to your own account(s). Set it, or turn off new sign-ups in Supabase (Step 6 below).
+- `ALLOWED_EMAILS` limits estimates (the part that costs money) to your own account(s). Others can still sign up and log meals by hand unless you turn sign-ups off (Step 6 below).
 - Input is validated (image type, size, and description length), and upstream errors are logged server-side rather than returned to the browser.
 - No wildcard CORS. Security headers (HSTS, nosniff, frame denial, permissions policy) are set in `vercel.json`.
 - The Supabase **anon key** in `index.html` is designed to be public. Data access is enforced by the RLS policies in `schema.sql`.
@@ -131,10 +131,19 @@ so the confirmation link returns to your app.
 
 ## Step 6 — Lock it down
 
-Once you've created your own account, go to Supabase → **Authentication →
-Sign In / Providers** and turn **Allow new users to sign up** OFF. Together
-with `ALLOWED_EMAILS`, this means a stranger who finds your URL can't create
-an account or run estimates on your API key.
+Create your own account first, so nobody else can register your email.
+
+Then choose who else can use it:
+
+- **Let others try it (sign-ups on).** With `ALLOWED_EMAILS` set to your email,
+  anyone can create an account and log meals by hand, and each person sees only
+  their own data. Only you can run photo estimates, which are what cost money;
+  anyone else who tries is told estimates aren't turned on for their account.
+- **Just you (sign-ups off).** Go to Supabase → **Authentication → Sign In /
+  Providers** and turn **Allow new users to sign up** OFF.
+
+Either way, set `ALLOWED_EMAILS`. Without it, every account can spend your
+Anthropic credits.
 
 ## Notes
 

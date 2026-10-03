@@ -328,7 +328,9 @@ function computeTargets(p){
   if(p.goal==="gain") cals = tdee + (p.rate||0.5)*500;
   cals = Math.max(cals, p.sex==="male"?1500:1200);
   const gPerKg = p.goal==="lose"?2.0:p.goal==="gain"?1.8:1.6;
-  const protein = Math.round(p.weightKg*gPerKg);
+  // Grams per kg of body weight, capped at 35% of calories: at high body
+  // weights the per-kg figure alone can exceed the whole calorie budget.
+  const protein = Math.round(Math.min(p.weightKg*gPerKg, cals*0.35/4));
   const fat = Math.round((cals*0.27)/9);
   const carbs = Math.max(0, Math.round((cals - protein*4 - fat*9)/4));
   return { bmr:Math.round(bmr), tdee:Math.round(tdee), calories:Math.round(cals/10)*10, protein, carbs, fat, valid:true };

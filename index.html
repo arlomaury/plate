@@ -328,7 +328,9 @@ function computeTargets(p){
   if(p.goal==="gain") cals = tdee + (p.rate||0.5)*500;
   cals = Math.max(cals, p.sex==="male"?1500:1200);
   const gPerKg = p.goal==="lose"?2.0:p.goal==="gain"?1.8:1.6;
-  const protein = Math.round(p.weightKg*gPerKg);
+  // Grams per kg of body weight, capped at 35% of calories: at high body
+  // weights the per-kg figure alone can exceed the whole calorie budget.
+  const protein = Math.round(Math.min(p.weightKg*gPerKg, cals*0.35/4));
   const fat = Math.round((cals*0.27)/9);
   const carbs = Math.max(0, Math.round((cals - protein*4 - fat*9)/4));
   return { bmr:Math.round(bmr), tdee:Math.round(tdee), calories:Math.round(cals/10)*10, protein, carbs, fat, valid:true };
@@ -472,9 +474,19 @@ function App({session}){
   const [adding,setAdding]=useState(false);
   const [detailId,setDetailId]=useState(null);
 
+  // Supabase returns at most 1,000 rows per request, so read in pages -
+  // otherwise meals older than ~1,000 entries would silently drop out of the
+  // log and out of backups.
   const loadMeals = async ()=>{
-    const { data } = await supabase.from("meals").select("*").order("ts",{ascending:false});
-    setMeals((data||[]).map(rowToMeal));
+    const PAGE=1000, all=[];
+    for(let from=0; from<100*PAGE; from+=PAGE){      // cap: 100,000 meals
+      const { data, error } = await supabase.from("meals").select("*")
+        .order("ts",{ascending:false}).order("id",{ascending:true}).range(from, from+PAGE-1);
+      if(error) return;          // keep what is on screen rather than blanking it
+      all.push(...(data||[]));
+      if(!data || data.length<PAGE) break;
+    }
+    setMeals(all.map(rowToMeal));
   };
   useEffect(()=>{
     let on=true;
@@ -494,17 +506,20 @@ function App({session}){
 
   const saveProfile = async (p)=>{
     setProfile(p);
-    await supabase.from("profiles").upsert({ user_id:userId, data:p, updated_at:new Date().toISOString() });
+    const { error } = await supabase.from("profiles").upsert({ user_id:userId, data:p, updated_at:new Date().toISOString() });
+    if(error){ alert("Couldn't save your goals - check your connection and try again."); throw error; }
   };
   const addEntry = async (entry)=>{
-    const row = { user_id:userId, ts:new Date().toISOString(), name:entry.name, description:entry.description||"",
+    const row = { user_id:userId, ts:new Date().toISOString(), name:String(entry.name||"Meal").slice(0,200), description:String(entry.description||"").slice(0,2000),
       items:entry.items||[], kcal:entry.calories, protein:entry.protein, carbs:entry.carbs, fat:entry.fat };
-    const { data } = await supabase.from("meals").insert(row).select().single();
+    const { data, error } = await supabase.from("meals").insert(row).select().single();
+    if(error){ alert("Couldn't save that meal - check your connection and try again."); throw error; }
     if(data) setMeals(m=>[rowToMeal(data),...m]);
   };
   const deleteEntry = async (id)=>{
     setMeals(m=>m.filter(x=>x.id!==id)); setDetailId(null);
-    await supabase.from("meals").delete().eq("id",id);
+    const { error } = await supabase.from("meals").delete().eq("id",id);
+    if(error){ alert("Couldn't delete that meal - it has been put back."); await loadMeals(); }
   };
   const exportData = ()=>{
     const payload={app:"Plate",version:2,exportedAt:new Date().toISOString(),profile,entries:meals};
@@ -514,16 +529,32 @@ function App({session}){
     setTimeout(()=>URL.revokeObjectURL(url),1000);
   };
   const importData = async (file)=>{
+    if(file.size > 10*1024*1024) throw new Error("Backup file is too large");
     const data=JSON.parse(await file.text());
+    if(!data || typeof data!=="object") throw new Error("Not a Plate backup");
     const incoming=Array.isArray(data.entries)?data.entries:[];
-    for(const e of incoming){
-      await supabase.from("meals").insert({ user_id:userId, ts:e.ts?new Date(e.ts).toISOString():new Date().toISOString(),
-        name:e.name||"Meal", description:e.description||"", items:e.items||[],
-        kcal:e.kcal||0, protein:e.protein||0, carbs:e.carbs||0, fat:e.fat||0 });
+    // Clean every field: a backup is just a file, and a hand-edited or
+    // corrupted one must not put bad values into the database.
+    const num=(v)=>Math.max(0,Math.min(100000,Math.round(Number(v)||0)));
+    const str=(v,n)=>String(v==null?"":v).slice(0,n);
+    const when=(v)=>{ const d=new Date(v); return isNaN(d) ? new Date().toISOString() : d.toISOString(); };
+    // Skip meals that are already in the log, so importing the same backup
+    // twice does not double everything.
+    const seen=new Set(meals.map(m=>m.ts+"|"+m.name));
+    const rows=incoming.filter(e=>e && typeof e==="object").map(e=>({ user_id:userId, ts:when(e.ts),
+        name:str(e.name||"Meal",120), description:str(e.description,600),
+        items:(Array.isArray(e.items)?e.items:[]).slice(0,50).map(it=>({ name:str(it&&it.name||"Item",120),
+          calories:num(it&&it.calories), protein:num(it&&(it.protein??it.protein_g)),
+          carbs:num(it&&(it.carbs??it.carbs_g)), fat:num(it&&(it.fat??it.fat_g)) })),
+        kcal:num(e.kcal), protein:num(e.protein), carbs:num(e.carbs), fat:num(e.fat) }))
+      .filter(r=>!seen.has(new Date(r.ts).getTime()+"|"+r.name));
+    for(let i=0;i<rows.length;i+=200){
+      const { error } = await supabase.from("meals").insert(rows.slice(i,i+200));
+      if(error) throw error;
     }
-    if(data.profile) await saveProfile(data.profile);
+    if(data.profile && typeof data.profile==="object" && !Array.isArray(data.profile)) await saveProfile(cleanProfile(data.profile));
     await loadMeals();
-    return { count: incoming.length };
+    return { count: rows.length };
   };
 
   const todayKey = dayKey();
@@ -550,9 +581,19 @@ function App({session}){
         <${Tab} on=${tab==="profile"} onClick=${()=>setTab("profile")} icon=${I.User} label="You"/>
       </nav>
     </div>
-    ${adding && html`<${AddSheet} onClose=${()=>setAdding(false)} onSave=${async(e)=>{await addEntry(e); setAdding(false);}}/>`}
+    ${adding && html`<${AddSheet} onClose=${()=>setAdding(false)} onSave=${async(e)=>{ try{ await addEntry(e); setAdding(false); }catch(_){ /* sheet stays open so nothing is lost */ } }}/>`}
     ${detailId && html`<${Detail} row=${meals.find(m=>m.id===detailId)} onClose=${()=>setDetailId(null)} onDelete=${deleteEntry}/>`}
   </div>`;
+}
+// Only the fields the app uses, each within a sane range - a restored backup
+// is just a file and must not put arbitrary data into the profile.
+function cleanProfile(p){
+  const n=(v,lo,hi,d)=>{ const x=Number(v); return isFinite(x)?Math.min(hi,Math.max(lo,x)):d; };
+  const pick=(v,opts,d)=>opts.includes(v)?v:d;
+  return { units:pick(p.units,["imperial","metric"],"imperial"), sex:pick(p.sex,["male","female"],"female"),
+    age:Math.round(n(p.age,0,120,0)), heightCm:n(p.heightCm,0,272,0), weightKg:n(p.weightKg,0,635,0),
+    activity:pick(p.activity,ACTIVITY.map(a=>a.key),"light"), goal:pick(p.goal,GOALS.map(g=>g.key),"maintain"),
+    rate:n(p.rate,0,2,1) };
 }
 function rowToMeal(r){
   return { id:r.id, ts:new Date(r.ts).getTime(), dateKey:dayKey(r.ts), name:r.name, description:r.description||"",
@@ -835,9 +876,9 @@ function ProfilePage({profile,onSave,onExport,onImport,email}){
   },[f]);
   const preview=useMemo(()=>computeTargets(draft),[draft]);
   const set=(k,v)=>{ setF(s=>({...s,[k]:v})); setSaved(false); };
-  const handleSave=async()=>{ await onSave(draft); setSaved(true); setTimeout(()=>setSaved(false),2000); };
+  const handleSave=async()=>{ try{ await onSave(draft); setSaved(true); setTimeout(()=>setSaved(false),2000); }catch(_){ /* alert already shown */ } };
   const handleImport=async(file)=>{ if(!file) return;
-    try{ const r=await onImport(file); setImportMsg("Restored — added "+r.count+" meals."); }
+    try{ const r=await onImport(file); setImportMsg(r.count ? "Restored — added "+r.count+(r.count===1?" meal.":" meals.") : "Nothing new to add — those meals are already in your log."); }
     catch{ setImportMsg("That file couldn't be read."); } setTimeout(()=>setImportMsg(""),4000); };
   const rateOptions = f.goal==="gain"?[0.25,0.5,1]:[0.5,1,1.5,2];
 
@@ -870,7 +911,12 @@ function ProfilePage({profile,onSave,onExport,onImport,email}){
     </${Card}>
 
     <${Card} title="Goal">
-      <${Seg} value=${f.goal} onChange=${v=>set("goal",v)} options=${GOALS.map(g=>({v:g.key,l:g.label}))}/>
+      <${Seg} value=${f.goal} onChange=${v=>{ set("goal",v);
+          // Each goal has its own rate choices (gain tops out at 1 lb/week);
+          // a rate carried over from the other goal must not survive the switch.
+          const opts = v==="gain"?[0.25,0.5,1]:[0.5,1,1.5,2];
+          if(!opts.includes(Number(f.rate))) set("rate", v==="gain"?0.5:1); }}
+        options=${GOALS.map(g=>({v:g.key,l:g.label}))}/>
       ${f.goal!=="maintain" && html`<div class="rate-block">
         <div class="rate-label">${f.goal==="lose"?"Lose":"Gain"} ${f.rate} lb / week</div>
         <div class="rate-opts">${rateOptions.map(r=>html`<button key=${r} class=${"rate-chip"+(Number(f.rate)===r?" on":"")} onClick=${()=>set("rate",r)}>${r}</button>`)}</div>

@@ -20,5 +20,5 @@ alter table public.profiles
   drop constraint if exists profiles_data_size,
   add constraint profiles_data_size check (pg_column_size(data) <= 8192 and jsonb_typeof(data) = 'object');
 
--- Live sync of deletes across devices (see schema.sql).
+-- Kept from an earlier version; see the note on deletes in schema.sql.
 alter table public.meals replica identity full;

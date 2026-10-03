@@ -525,8 +525,18 @@ function App({session}){
       await loadMeals();
       if(on) setLoaded(true);
     })();
+    // Inserts and edits are filtered to this user. Deletes can't be: with row
+    // level security on, Supabase sends a delete with only the row's id (no
+    // user_id), so a user_id filter never matches and a meal deleted on the
+    // phone stayed on the laptop. Every delete arrives instead, and only an
+    // id that is in this user's list does anything.
     const ch = supabase.channel("meals-sync")
-      .on("postgres_changes",{event:"*",schema:"public",table:"meals",filter:"user_id=eq."+userId}, loadMeals)
+      .on("postgres_changes",{event:"INSERT",schema:"public",table:"meals",filter:"user_id=eq."+userId}, loadMeals)
+      .on("postgres_changes",{event:"UPDATE",schema:"public",table:"meals",filter:"user_id=eq."+userId}, loadMeals)
+      .on("postgres_changes",{event:"DELETE",schema:"public",table:"meals"}, (p)=>{
+        const id = p && p.old && p.old.id;
+        if(id) setMeals(m=>m.some(x=>x.id===id) ? m.filter(x=>x.id!==id) : m);
+      })
       .subscribe();
     return ()=>{ on=false; supabase.removeChannel(ch); };
   },[userId]);

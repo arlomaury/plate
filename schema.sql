@@ -63,7 +63,8 @@ begin
   end if;
 end $$;
 
--- Deletes carry the whole old row, so a delete on one device reaches the
--- others: Supabase can only match a filtered (user_id=eq...) DELETE event when
--- the table's replica identity is full.
+-- Note on deletes: with row level security on, Supabase sends a DELETE event
+-- with only the row's id, whatever the replica identity, so the app listens to
+-- deletes unfiltered and matches the id against its own list (index.html).
+-- Replica identity full is kept from an earlier version; it does no harm.
 alter table public.meals replica identity full;

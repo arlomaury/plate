@@ -175,8 +175,9 @@ body{
 .item-row{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:8px 10px;}
 .item-main{display:flex;gap:8px;align-items:center;}
 .item-macros{display:flex;gap:8px;margin-top:6px;}
-.item-macros label{flex:1;display:flex;align-items:center;gap:4px;font-size:11px;color:var(--muted);min-width:0;}
-.item-macros input{width:100%;min-width:0;border:none;outline:none;background:var(--paper-2);border-radius:8px;padding:4px 6px;font-family:inherit;font-size:13px;text-align:right;color:var(--ink);}
+.item-macros label{flex:1;display:flex;flex-direction:column;gap:2px;font-size:10.5px;color:var(--muted);min-width:0;}
+.item-macros input{width:100%;min-width:0;box-sizing:border-box;border:none;outline:none;background:var(--paper-2);border-radius:8px;padding:4px 6px;font-family:inherit;font-size:13px;text-align:right;color:var(--ink);-moz-appearance:textfield;appearance:textfield;}
+.item-macros input::-webkit-outer-spin-button,.item-macros input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0;}
 .item-macros span{white-space:nowrap;}
 .item-row input.iname{flex:1;border:none;outline:none;background:none;font-family:inherit;font-size:14px;color:var(--ink);min-width:0;}
 .item-row input.ical{width:64px;border:none;outline:none;background:var(--paper-2);border-radius:8px;padding:6px 8px;font-family:inherit;font-size:14px;text-align:right;color:var(--ink);}
@@ -952,7 +953,7 @@ function AddSheet({onClose,onSave}){
           </div>
           <div class="item-macros">
             ${[["protein","protein"],["carbs","carbs"],["fat","fat"]].map(([k,l])=>html`<label key=${k}>
-              <input type="number" inputmode="numeric" value=${it[k]} onChange=${e=>setItem(i,k,e.target.value)}/><span>g ${l}</span></label>`)}
+              <span>${l[0].toUpperCase()+l.slice(1)} (g)</span><input type="number" inputmode="numeric" value=${it[k]} onChange=${e=>setItem(i,k,e.target.value)}/></label>`)}
           </div>
         </div>`)}
         <div class="item-total"><span>Total</span><span><b>${totals.calories}</b> cal · ${totals.protein}p · ${totals.carbs}c · ${totals.fat}f</span></div>

@@ -573,12 +573,21 @@ function App({session}){
       items:entry.items||[], kcal:entry.calories, protein:entry.protein, carbs:entry.carbs, fat:entry.fat };
     const { data, error } = await supabase.from("meals").insert(row).select().single();
     if(error){ alert(saveError(error,"that meal")); throw error; }
-    if(data) setMeals(m=>[rowToMeal(data),...m]);
+    // A load that was already running read the log before this meal existed;
+    // it must not land afterwards and drop it. Then re-sync once.
+    loadSeq.current++;
+    if(data) setMeals(m=>m.some(x=>x.id===data.id) ? m : [rowToMeal(data),...m]);
+    loadMealsSoon();
   };
   const deleteEntry = async (id)=>{
+    // Same for a delete: a load already in flight still has this meal in it,
+    // and landing after the delete would bring it back for good (the delete
+    // event has already been and gone).
+    loadSeq.current++;
     setMeals(m=>m.filter(x=>x.id!==id)); setDetailId(null);
     const { error } = await supabase.from("meals").delete().eq("id",id);
-    if(error){ alert("Couldn't delete that meal - it has been put back."); await loadMeals(); }
+    if(error){ alert("Couldn't delete that meal - it has been put back."); await loadMeals(); return; }
+    loadMealsSoon();
   };
   const exportData = ()=>{
     const payload={app:"Plate",version:2,exportedAt:new Date().toISOString(),profile,entries:meals};

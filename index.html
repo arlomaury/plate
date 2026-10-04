@@ -507,6 +507,9 @@ function App({session}){
   const [profile,setProfile]=useState(null);
   const [meals,setMeals]=useState([]);
   const [loaded,setLoaded]=useState(false);
+  // Opened offline (it is an installable app), the log could not be read and
+  // the Today page said "Nothing logged yet" - which reads as data lost.
+  const [offline,setOffline]=useState(false);
   const [adding,setAdding]=useState(false);
   const [detailId,setDetailId]=useState(null);
 
@@ -523,11 +526,14 @@ function App({session}){
     for(let from=0; from<100*PAGE; from+=PAGE){      // cap: 100,000 meals
       const { data, error } = await supabase.from("meals").select("*")
         .order("ts",{ascending:false}).order("id",{ascending:true}).range(from, from+PAGE-1);
-      if(error) return;          // keep what is on screen rather than blanking it
+      if(error){                 // keep what is on screen rather than blanking it
+        if(mine===loadSeq.current) setOffline(true);
+        return;
+      }
       all.push(...(data||[]));
       if(!data || data.length<PAGE) break;
     }
-    if(mine===loadSeq.current) setMeals(all.map(rowToMeal));
+    if(mine===loadSeq.current){ setMeals(all.map(rowToMeal)); setOffline(false); }
   };
   // Realtime sends one event per row, so restoring a 500-meal backup fired 500
   // full reloads of the log. Events are gathered for a moment and answered
@@ -558,7 +564,10 @@ function App({session}){
         if(id) setMeals(m=>m.some(x=>x.id===id) ? m.filter(x=>x.id!==id) : m);
       })
       .subscribe();
-    return ()=>{ on=false; clearTimeout(reloadTimer.current); supabase.removeChannel(ch); };
+    // Back online: read the log again rather than waiting for a change.
+    const back=()=>loadMeals();
+    window.addEventListener("online",back);
+    return ()=>{ on=false; clearTimeout(reloadTimer.current); window.removeEventListener("online",back); supabase.removeChannel(ch); };
   },[userId]);
 
   const targets = useMemo(()=>computeTargets(profile),[profile]);
@@ -654,6 +663,7 @@ function App({session}){
         <div class="brand-sub">${tab==="today"?prettyDate(todayKey):tab==="log"?"Full history":"You & your goals"}</div>
       </header>
       <main class="content">
+        ${offline && html`<div class="inline-warn" role="status" style=${{margin:"12px 16px 0"}}><${I.Alert} size=${15}/> Can't reach your log right now - check your connection. Your meals will show again once you're back online.</div>`}
         ${!loaded ? html`<div class="loading-screen"><${I.Loader} size=${26} className="spin"/></div>`
           : tab==="today" ? html`<${TodayPage} targets=${targets} entries=${todays} hasProfile=${!!profile}
               onAdd=${()=>setAdding(true)} onOpen=${id=>setDetailId(id)} goProfile=${()=>setTab("profile")}/>`

@@ -897,6 +897,7 @@ function AddSheet({onClose,onSave}){
               <div class="dz-title">Add a photo <span class="optional-tag">(optional)</span></div>
               <div class="dz-sub">Snap your plate — or skip it and just describe the meal below</div>
             </button>`}
+        ${err && html`<div class="inline-warn" role="alert"><${I.Alert} size=${15}/> ${err} Try another photo (a JPEG or PNG), or describe the meal instead.</div>`}
         <label class="fld"><span>Describe it <span class="optional-tag">(optional)</span></span>
           <textarea rows=${3} value=${note} placeholder="e.g. chicken burrito bowl, brown rice, no cheese, extra guac"
             onChange=${e=>setNote(e.target.value)}></textarea></label>

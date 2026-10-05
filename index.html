@@ -998,6 +998,11 @@ function ProfilePage({profile,onSave,onExport,onImport,email}){
     // Saving blanks would hide the setup prompt for good while quietly using
     // generic targets - so the basics are required.
     if(!(draft.age>0 && draft.heightCm>0 && draft.weightKg>0)){ setFormErr("Enter your age, height and weight first."); return; }
+    // The Mifflin-St Jeor equation is for adults, and a typo (170 typed as
+    // the age, 17 as the weight) would otherwise set wildly wrong targets.
+    if(draft.age<18 || draft.age>100){ setFormErr("These targets use an adult formula, so the age needs to be between 18 and 100."); return; }
+    if(draft.heightCm<120 || draft.heightCm>230 || draft.weightKg<35 || draft.weightKg>300){
+      setFormErr("That height or weight looks off - check the numbers and the units (lb/ft or kg/cm)."); return; }
     setFormErr("");
     try{ await onSave(draft); setSaved(true); setTimeout(()=>setSaved(false),2000); }catch(_){ /* alert already shown */ } };
   const handleImport=async(file)=>{ if(!file) return;

@@ -41,17 +41,19 @@ alter table public.profiles drop constraint if exists profiles_data_size;
 alter table public.profiles
   add constraint profiles_data_size check (pg_column_size(data) <= 8192 and jsonb_typeof(data) = 'object');
 
--- Row Level Security: each user can only touch their own rows
+-- Row Level Security: each user can only touch their own rows.
+-- (select auth.uid()) rather than auth.uid(): Postgres then works out the
+-- user once per query instead of once per row (Supabase's own advice).
 alter table public.profiles enable row level security;
 alter table public.meals    enable row level security;
 
 drop policy if exists "own profile" on public.profiles;
 create policy "own profile" on public.profiles
-  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+  for all using ((select auth.uid()) = user_id) with check ((select auth.uid()) = user_id);
 
 drop policy if exists "own meals" on public.meals;
 create policy "own meals" on public.meals
-  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+  for all using ((select auth.uid()) = user_id) with check ((select auth.uid()) = user_id);
 
 -- Live sync across devices
 -- (guarded so the whole file can be re-run safely)
